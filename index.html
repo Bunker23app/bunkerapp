@@ -5391,6 +5391,7 @@ function buildConfigura() {
         var fromIdx = parseInt(_cfgDragSrc.dataset.idx);
         var toIdx   = parseInt(this.dataset.idx);
         WIDGET_CONFIG.splice(toIdx, 0, WIDGET_CONFIG.splice(fromIdx, 1)[0]);
+        saveToStorage();
         buildConfigura();
       });
       wList.appendChild(row);
@@ -5558,6 +5559,7 @@ function syncWidgetTabEnabled(id, enabled) {
   if (w) w.enabled = enabled;
   var t = TAB_CONFIG.find(function(x){ return x.id === id; });
   if (t) t.enabled = enabled;
+  saveToStorage();
 }
 
 // Sincronizza abilitazione aiutante widget → anche tab aiutante
