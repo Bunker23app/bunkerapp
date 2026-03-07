@@ -6533,6 +6533,8 @@ document.addEventListener('DOMContentLoaded', function() {
         applyLoadedData(res.data.data);
         buildAll();
         updateHomeAccessLevel();
+        updatePageCfgBtns();
+        updateStaffNavBtns();
         console.log('Supabase: dati caricati');
       }
     } catch(e) {
@@ -6574,6 +6576,8 @@ document.addEventListener('DOMContentLoaded', function() {
           if (res.error || !res.data) return;
           applyLoadedData(res.data.data);
           buildAll();
+          updatePageCfgBtns();
+          updateStaffNavBtns();
           if (currentUser) {
             var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
             if (updated) currentUser = updated;
@@ -6621,6 +6625,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (res.error || !res.data) return;
         if (res.data.updated_at !== _lastUpdatedAt) {
           _lastUpdatedAt = res.data.updated_at;
+          // Non sovrascrivere se stiamo salvando o abbiamo appena salvato
+          if (_isSaving || (Date.now() - _lastSaveTime < 5000)) return;
           applyLoadedData(res.data.data);
           buildAll();
           if (currentUser) {
@@ -6965,6 +6971,8 @@ function stampaProgrammaEventi() {
 // ════════════════════════════════════════
 var _storageKey = 'bunker23_data_v5';
 var _saveTimer = null;
+var _isSaving = false;
+var _lastSaveTime = 0;
 
 // ════════════════════════════════════════
 // SUPABASE
@@ -7031,6 +7039,8 @@ function saveToStorage() {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(function() {
     var data = buildDataObject();
+    _isSaving = true;
+    _lastSaveTime = Date.now();
     // Salva sempre su localStorage come backup
     try { localStorage.setItem(_storageKey, JSON.stringify(data)); } catch(e) {}
     // Salva su Supabase se disponibile
@@ -7040,10 +7050,10 @@ function saveToStorage() {
         .upsert({ id: 1, data: data, updated_at: new Date().toISOString() })
         .then(function(res) {
           if (res.error) console.warn('Supabase save error:', res.error.message);
-          else broadcastSync();
+          else { broadcastSync(); setTimeout(function(){ _isSaving = false; }, 3000); }
         });
     }
-  }, 2000);
+  }, 1000);
 }
 
 function applyLoadedData(data) {
