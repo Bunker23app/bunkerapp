@@ -2046,11 +2046,7 @@ const MS_ANIM     = 300;
 const MS_DEBOUNCE = 400;
 
 let CONSIGLIATI = [];
-let EVENTI = [
-  { id:1, nome:'COMPLEANNO VERENA',  anno:2026, mese:3, giorno:7,  ora:'21:00', tipo:'privato',     desc:'', note:'Rock Town' },
-  { id:2, nome:'BACK TO THE TECHNO', anno:2026, mese:3, giorno:13, ora:'22:00', tipo:'consigliato', desc:'', note:'La Rocca' },
-  { id:3, nome:'CARNEVALCOOL',       anno:2026, mese:3, giorno:14, ora:'22:00', tipo:'invito',      desc:'', note:'Al Bunker23' },
-];
+let EVENTI = []; // caricati da Supabase (tabella calendario)
 
 let BACHECA = [
   { id:3, icon:'📌', titolo:'REGOLAMENTO', testo:"Rispettare gli spazi comuni. Vietato introdurre bevande dall'esterno. Grazie.", tempo:'01 MAR', foto:'' },
@@ -6751,7 +6747,8 @@ function saveEventi() {
           data: dataStr,
           data_fine: dataFineStr,
           ora: e.ora || '',
-          luogo: e.note || '',
+          luogo: e.luogo || '',
+          note: e.note || '',
           descrizione: e.desc || '',
           tipo: e.tipo || 'invito',
           locandina: e.locandina || null,
@@ -6759,10 +6756,15 @@ function saveEventi() {
           created_by: currentUser ? currentUser.name : null,
         };
       });
-      await getSupabase().from('calendario').delete().gt('id', 0);
-      if (rows.length) {
-        var res = await getSupabase().from('calendario').insert(rows);
-        if (res.error) console.warn('[sb.calendario]', res.error.message);
+      // Upsert: aggiorna se esiste, inserisce se non esiste
+      var res = await getSupabase().from('calendario').upsert(rows, { onConflict: 'id' });
+      if (res.error) console.warn('[sb.calendario save]', res.error.message);
+      // Elimina eventi che non sono più in EVENTI (rimossi)
+      var ids = EVENTI.map(function(e){ return e.id; });
+      if (ids.length) {
+        await getSupabase().from('calendario').delete().not('id', 'in', '(' + ids.join(',') + ')');
+      } else {
+        await getSupabase().from('calendario').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.calendario]', e.message); }
     saveConfig();
@@ -7053,7 +7055,8 @@ async function loadAllData() {
           ora: e.ora || '21:00',
           tipo: e.tipo || 'invito',
           desc: e.descrizione || '',
-          note: e.luogo || '',
+          luogo: e.luogo || '',
+          note: e.note || '',
           locandina: e.locandina || null,
           giornoFine: null, meseFine: null, annoFine: null,
         };
