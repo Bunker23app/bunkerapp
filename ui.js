@@ -2665,6 +2665,10 @@ function openMagazzinoModal(editIdx, defaultCat) {
     }
     
     if (isEdit) { MAGAZZINO[editIdx] = obj; } else { MAGAZZINO.push(obj); }
+    // Per articoli custom (id >= 23), salva subito la definizione in appconfig
+    // PRIMA di chiamare saveMagazzino, così il realtime degli altri client
+    // troverà già il config aggiornato quando riceve l'INSERT sulla tabella magazzino.
+    if (obj.id >= 23) saveConfig();
     saveMagazzino();
     addLog((isEdit ? 'modificato' : 'aggiunto') + ' magazzino: ' + obj.nome);
     syncMagazzinoWithSpesa();

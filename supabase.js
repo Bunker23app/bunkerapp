@@ -195,7 +195,35 @@ function saveMagazzino() {
       var rows = MAGAZZINO.map(function(m) {
         return { item_id: m.id, attuale: m.attuale };
       });
-      // Prima prova upsert con onConflict
+
+      // Se ci sono articoli custom (id >= 23), persisti PRIMA la loro definizione in appconfig
+      // in modo che quando il realtime INSERT arriva sugli altri client, la definizione
+      // sia già disponibile nel config. Non usare debounce qui: await diretto.
+      if (MAGAZZINO.some(function(m){ return m.id >= 23; })) {
+        var cfg = {
+          WIDGET_CONFIG: WIDGET_CONFIG,
+          TAB_CONFIG: TAB_CONFIG,
+          BENVENUTO_TEXT: BENVENUTO_TEXT,
+          AIUTANTE_WIDGET_CONFIG: AIUTANTE_WIDGET_CONFIG,
+          AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
+          PAGE_SECTIONS: PAGE_SECTIONS,
+          PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
+          GUEST_MESSAGE: GUEST_MESSAGE,
+          SPLASH_TEXTS: SPLASH_TEXTS,
+          LINKS_PAGE: LINKS_PAGE,
+          LINKS_EVENTO: LINKS_EVENTO,
+          _nextLinkId: _nextLinkId,
+          CONSIGLIATI: CONSIGLIATI,
+          EVENTI_VALUTAZIONI: EVENTI_VALUTAZIONI,
+          BACHECA: BACHECA,
+          INFO: INFO,
+          _nextIds: _nextIds,
+          MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
+        };
+        await _sbUpsert('appconfig', { id: 1, data: cfg });
+      }
+
+      // Upsert quantità nella tabella magazzino (genera il realtime INSERT/UPDATE)
       var res = await sb.from('magazzino').upsert(rows, { onConflict: 'item_id' });
       if (res.error) {
         // Fallback: delete + insert
@@ -205,11 +233,6 @@ function saveMagazzino() {
           console.warn('[sb.magazzino] insert fallback:', res2.error.message);
           showToast('// ERRORE SALVATAGGIO MAGAZZINO: ' + res2.error.message, 'error');
         }
-      }
-      // Se ci sono articoli custom (id >= 23), persisti anche la loro definizione in appconfig
-      // cosi' gli altri client li ottengono al prossimo reload config via realtime
-      if (MAGAZZINO.some(function(m){ return m.id >= 23; })) {
-        saveConfig();
       }
     } catch(e) {
       console.warn('[sb.magazzino]', e.message);
@@ -710,8 +733,10 @@ function initRealtime() {
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
-      // item_id sconosciuto = nuovo articolo custom: scarica config per avere la definizione completa
-      else { _reloadMagazzino(true); }
+      // item_id sconosciuto = nuovo articolo custom: la definizione è già stata scritta in appconfig
+      // prima dell'upsert magazzino (vedi saveMagazzino). Aggiunge un piccolo ritardo di sicurezza
+      // nel caso di latenza di rete, poi scarica config + quantità.
+      else { setTimeout(function(){ _reloadMagazzino(true); }, 300); }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
       console.log('[DIAG][magazzino] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
