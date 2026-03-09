@@ -301,7 +301,7 @@ function updateHomeAccessLevel() {
   if (calWrap) calWrap.style.display = isGuest ? 'none' : '';
 
   var nextEv = $id('homeNextEvent');
-  if (nextEv) nextEv.style.display = isGuest ? 'none' : '';
+  if (nextEv) nextEv.style.display = ''; // sempre visibile, anche per ospiti
 }
 
 // ════════════════════════════════════════
@@ -3332,6 +3332,15 @@ function stampaProgrammaEventi() {
 // ════════════════════════════════════════
 
 function enterAsGuest() {
+  // Feedback visivo immediato — evita che il tasto sembri non rispondere
+  var enterBtn = document.querySelector('.enter-btn');
+  if (enterBtn) {
+    enterBtn.textContent = '⟳  CARICAMENTO...';
+    enterBtn.style.opacity = '0.6';
+    enterBtn.style.pointerEvents = 'none';
+    enterBtn.style.animation = 'none';
+  }
+
   guestMode   = true;
   currentUser = null;
 
