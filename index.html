@@ -6188,96 +6188,82 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Avvio: carica da localStorage config (immediato), poi da Supabase (aggiornato)
+  // Avvio: mostra splash, poi carica Supabase, poi ripristina sessione
   var splashGear = document.querySelector('.splash-gear');
   if (splashGear) splashGear.style.animationDuration = '3s';
 
-  // Carica config locale subito per risposta immediata
+  // Carica config dal cache localStorage per rendering immediato (solo fallback UI)
   try {
     var rawCfg = localStorage.getItem('bunker23_config');
     if (rawCfg) { try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {} }
-    // Fallback: vecchio storageKey
-    else {
-      var rawOld = localStorage.getItem('bunker23_data_v7');
-      if (rawOld) { try { var dOld = JSON.parse(rawOld); _applyConfig(dOld); if(dOld.BACHECA) BACHECA=dOld.BACHECA; if(dOld.INFO) INFO=dOld.INFO; } catch(e) {} }
-    }
   } catch(e) {}
   buildAll();
   updateHomeAccessLevel();
 
-  // Ripristina sessione
-  try {
-    var savedSession = localStorage.getItem('bunker23_session');
-    if (savedSession) {
-      var sess = JSON.parse(savedSession);
-      var elapsed = Date.now() - (sess.ts || 0);
-      var isStaffRole = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
-      var MAX_SESSION = isStaffRole ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
-      if (elapsed < MAX_SESSION) {
-        var member = MEMBERS.find(function(m) { return m.name === sess.name; });
-        if (member) {
-          currentUser = member;
-          localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
-          resetSessionTimer();
-          buildAll();
-          updateHomeAccessLevel();
-          updatePageCfgBtns();
-          if (member.role === ROLES.STAFF || member.role === ROLES.ADMIN || member.role === ROLES.AIUTANTE) {
-            renderAvatar(document.getElementById('staffAvatar'), member);
-            document.getElementById('staffName').textContent = member.name.toUpperCase();
-            document.getElementById('staffRole').textContent = roleLabel(member.role).label;
-            var staffScreen = document.getElementById('screenStaff');
-            staffScreen.classList.toggle('is-admin', member.role === ROLES.ADMIN);
-            applyBenvenuto();
-            applyWidgetConfig();
-            applyTabConfig();
-            showTab('dashboard');
-          }
-          applyPageSections('home');
-          applyPageSections('bacheca');
-          applyPageSections('info');
-          navigate('screenHome');
-          showToast('// BENTORNATO ' + member.name.toUpperCase(), 'ok');
-        } else {
-          localStorage.removeItem('bunker23_session');
-        }
-      } else {
-        localStorage.removeItem('bunker23_session');
-      }
-    }
-  } catch(e) {}
-
-  // Carica tutti i dati da Supabase in background
+  // Carica tutti i dati da Supabase, POI ripristina la sessione
   (async function() {
     try {
       _sbReady = true;
       await loadAllData();
-      buildAll();
-      if (currentUser) {
-        // Aggiorna riferimento currentUser con dati freschi da DB
-        var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
-        if (updated) currentUser = updated;
-        applyWidgetConfig();
-        applyTabConfig();
-      }
-      updateHomeAccessLevel();
-      initRealtime();
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
       console.warn('Supabase non raggiungibile:', e.message);
       _sbReady = false;
     }
+
+    // Ripristina sessione DOPO che i dati Supabase sono pronti
+    var sessionRestored = false;
+    try {
+      var savedSession = localStorage.getItem('bunker23_session');
+      if (savedSession) {
+        var sess = JSON.parse(savedSession);
+        var elapsed = Date.now() - (sess.ts || 0);
+        var isStaffRole = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
+        var MAX_SESSION = isStaffRole ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
+        if (elapsed < MAX_SESSION) {
+          var member = MEMBERS.find(function(m) { return m.name === sess.name; });
+          if (member) {
+            currentUser = member;
+            localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
+            resetSessionTimer();
+            sessionRestored = true;
+            if (member.role === ROLES.STAFF || member.role === ROLES.ADMIN || member.role === ROLES.AIUTANTE) {
+              renderAvatar(document.getElementById('staffAvatar'), member);
+              document.getElementById('staffName').textContent = member.name.toUpperCase();
+              document.getElementById('staffRole').textContent = roleLabel(member.role).label;
+              var staffScreen = document.getElementById('screenStaff');
+              staffScreen.classList.toggle('is-admin', member.role === ROLES.ADMIN);
+              applyBenvenuto();
+              applyWidgetConfig();
+              applyTabConfig();
+              showTab('dashboard');
+            }
+            applyPageSections('home');
+            applyPageSections('bacheca');
+            applyPageSections('info');
+            navigate('screenHome');
+            showToast('// BENTORNATO ' + member.name.toUpperCase(), 'ok');
+          } else {
+            localStorage.removeItem('bunker23_session');
+          }
+        } else {
+          localStorage.removeItem('bunker23_session');
+        }
+      }
+    } catch(e) {}
+
+    // Rebuild UI con dati freschi
+    buildAll();
+    if (currentUser) {
+      var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
+      if (updated) currentUser = updated;
+      updatePageCfgBtns();
+      applyWidgetConfig();
+      applyTabConfig();
+    }
+    updateHomeAccessLevel();
+    if (_sbReady) initRealtime();
   })();
-  // Feedback: flash breve sul logo splash prima di mostrare la schermata
-  var splashOverlay = document.querySelector('.splash-overlay');
-  if (splashOverlay) {
-    splashOverlay.style.opacity = '0';
-    splashOverlay.style.transition = 'opacity 0.4s';
-    setTimeout(function() {
-      splashOverlay.style.opacity = '1';
-      if (splashGear) splashGear.style.animationDuration = '12s'; // torna normale
-    }, 150);
-  }
 });
 
 // ════════════════════════════════════════
@@ -7009,175 +6995,141 @@ function _applyConfig(cfg) {
 async function loadAllData() {
   var sb = getSupabase();
 
-  // 1. CONFIG
-  try {
-    var cfgRes = await sb.from('appconfig').select('data').eq('id', 1).single();
-    if (cfgRes.data && cfgRes.data.data) _applyConfig(cfgRes.data.data);
-    // Fallback localStorage config
-    else {
-      var rawCfg = localStorage.getItem('bunker23_config');
-      if (rawCfg) try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {}
-    }
-  } catch(e) {
+  // Tutte le query in parallelo
+  var [cfgRes, mRes, calRes, spRes, lavRes, mzRes, pagRes, chatRes, logRes, sugRes, valRes] = await Promise.all([
+    sb.from('appconfig').select('data').eq('id', 1).single().catch(function(e){ return { data: null, error: e }; }),
+    sb.from('members').select('*').catch(function(e){ return { data: null, error: e }; }),
+    sb.from('calendario').select('*').order('data', { ascending: true }).catch(function(e){ return { data: null, error: e }; }),
+    sb.from('spesa').select('*').catch(function(e){ return { data: null, error: e }; }),
+    sb.from('lavori').select('*').catch(function(e){ return { data: null, error: e }; }),
+    sb.from('magazzino').select('*').catch(function(e){ return { data: null, error: e }; }),
+    sb.from('pagamenti').select('*').catch(function(e){ return { data: null, error: e }; }),
+    sb.from('chat').select('*').order('ts', { ascending: true }).limit(200).catch(function(e){ return { data: null, error: e }; }),
+    sb.from('log').select('*').order('ts', { ascending: false }).limit(500).catch(function(e){ return { data: null, error: e }; }),
+    sb.from('suggerimenti').select('*').order('ts', { ascending: false }).catch(function(e){ return { data: null, error: e }; }),
+    sb.from('valutazioni').select('*').order('ts', { ascending: false }).catch(function(e){ return { data: null, error: e }; }),
+  ]);
+
+  // 1. CONFIG — Supabase è fonte primaria; cache localStorage solo come fallback offline
+  if (cfgRes.data && cfgRes.data.data) {
+    _applyConfig(cfgRes.data.data);
+    try { localStorage.setItem('bunker23_config', JSON.stringify(cfgRes.data.data)); } catch(e) {}
+  } else if (cfgRes.error) {
+    console.warn('[load appconfig]', cfgRes.error.message || cfgRes.error);
     var rawCfg = localStorage.getItem('bunker23_config');
     if (rawCfg) try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {}
   }
 
   // 2. MEMBERS
-  try {
-    var mRes = await sb.from('members').select('*');
-    if (mRes.data && mRes.data.length) {
-      mRes.data.forEach(function(dm) {
-        var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
-        var mapped = {
-          name: dm.name, initial: dm.initial, color: dm.color,
-          password: dm.password_hash, role: dm.role,
-          photo: dm.foto_url || null, sospeso: dm.sospeso || false,
-        };
-        if (existing) Object.assign(existing, mapped);
-        else MEMBERS.push(mapped);
-      });
-    }
-  } catch(e) { console.warn('[load members]', e.message); }
+  if (mRes.data && mRes.data.length) {
+    mRes.data.forEach(function(dm) {
+      var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
+      var mapped = {
+        name: dm.name, initial: dm.initial, color: dm.color,
+        password: dm.password_hash, role: dm.role,
+        photo: dm.foto_url || null, sospeso: dm.sospeso || false,
+      };
+      if (existing) Object.assign(existing, mapped);
+      else MEMBERS.push(mapped);
+    });
+  } else if (mRes.error) { console.warn('[load members]', mRes.error.message || mRes.error); }
 
   // 3. CALENDARIO
-  try {
-    var calRes = await sb.from('calendario').select('*').order('data', { ascending: true });
-    if (calRes.data && calRes.data.length) {
-      EVENTI = calRes.data.map(function(e) {
-        var d = new Date(e.data);
-        var obj = {
-          id: e.id,
-          nome: e.titolo,
-          anno: d.getUTCFullYear(),
-          mese: d.getUTCMonth() + 1,
-          giorno: d.getUTCDate(),
-          ora: e.ora || '21:00',
-          tipo: e.tipo || 'invito',
-          desc: e.descrizione || '',
-          luogo: e.luogo || '',
-          note: e.note || '',
-          locandina: e.locandina || null,
-          giornoFine: null, meseFine: null, annoFine: null,
-        };
-        if (e.data_fine) {
-          var df = new Date(e.data_fine);
-          obj.giornoFine = df.getUTCDate();
-          obj.meseFine   = df.getUTCMonth() + 1;
-          obj.annoFine   = df.getUTCFullYear();
-        }
-        return obj;
-      });
-      // Aggiorna _nextIds
-      var maxId = EVENTI.reduce(function(m,e){ return Math.max(m, e.id); }, 0);
-      if (maxId >= _nextIds.event) _nextIds.event = maxId + 1;
-    }
-  } catch(e) { console.warn('[load calendario]', e.message); }
+  if (calRes.data && calRes.data.length) {
+    EVENTI = calRes.data.map(function(e) {
+      var d = new Date(e.data);
+      var obj = {
+        id: e.id, nome: e.titolo,
+        anno: d.getUTCFullYear(), mese: d.getUTCMonth() + 1, giorno: d.getUTCDate(),
+        ora: e.ora || '21:00', tipo: e.tipo || 'invito',
+        desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
+        locandina: e.locandina || null,
+        giornoFine: null, meseFine: null, annoFine: null,
+      };
+      if (e.data_fine) {
+        var df = new Date(e.data_fine);
+        obj.giornoFine = df.getUTCDate(); obj.meseFine = df.getUTCMonth() + 1; obj.annoFine = df.getUTCFullYear();
+      }
+      return obj;
+    });
+    var maxId = EVENTI.reduce(function(m,e){ return Math.max(m, e.id); }, 0);
+    if (maxId >= _nextIds.event) _nextIds.event = maxId + 1;
+  } else if (calRes.error) { console.warn('[load calendario]', calRes.error.message || calRes.error); }
 
   // 4. SPESA
-  try {
-    var spRes = await sb.from('spesa').select('*');
-    if (spRes.data && spRes.data.length) {
-      SPESA = spRes.data.map(function(s) {
-        return {
-          id: s.id, nome: s.item, done: s.done || false,
-          qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
-          unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
-          magazzinoId: s.magazzino_id || null,
-        };
-      });
-      var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
-      if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
-    }
-  } catch(e) { console.warn('[load spesa]', e.message); }
+  if (spRes.data && spRes.data.length) {
+    SPESA = spRes.data.map(function(s) {
+      return {
+        id: s.id, nome: s.item, done: s.done || false,
+        qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
+        unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
+        magazzinoId: s.magazzino_id || null,
+      };
+    });
+    var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
+    if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
+  } else if (spRes.error) { console.warn('[load spesa]', spRes.error.message || spRes.error); }
 
   // 5. LAVORI
-  try {
-    var lavRes = await sb.from('lavori').select('*');
-    if (lavRes.data && lavRes.data.length) {
-      LAVORI = lavRes.data.map(function(l) {
-        return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
-      });
-      var maxId = LAVORI.reduce(function(m,l){ return Math.max(m,l.id); }, 0);
-      if (maxId >= _nextIds.lavori) _nextIds.lavori = maxId + 1;
-    }
-  } catch(e) { console.warn('[load lavori]', e.message); }
+  if (lavRes.data && lavRes.data.length) {
+    LAVORI = lavRes.data.map(function(l) {
+      return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
+    });
+    var maxId = LAVORI.reduce(function(m,l){ return Math.max(m,l.id); }, 0);
+    if (maxId >= _nextIds.lavori) _nextIds.lavori = maxId + 1;
+  } else if (lavRes.error) { console.warn('[load lavori]', lavRes.error.message || lavRes.error); }
 
   // 6. MAGAZZINO (solo quantità)
-  try {
-    var mzRes = await sb.from('magazzino').select('*');
-    if (mzRes.data && mzRes.data.length) {
-      mzRes.data.forEach(function(row) {
-        var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-        if (item) item.attuale = row.attuale;
-      });
-    }
-  } catch(e) { console.warn('[load magazzino]', e.message); }
+  if (mzRes.data && mzRes.data.length) {
+    mzRes.data.forEach(function(row) {
+      var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
+      if (item) item.attuale = row.attuale;
+    });
+  } else if (mzRes.error) { console.warn('[load magazzino]', mzRes.error.message || mzRes.error); }
 
   // 7. PAGAMENTI
-  try {
-    var pagRes = await sb.from('pagamenti').select('*');
-    if (pagRes.data && pagRes.data.length) {
-      pagRes.data.forEach(function(row) {
-        var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
-        var movimenti = [];
-        try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti || []); } catch(e) {}
-        if (existing) {
-          existing.saldo = row.saldo || 0;
-          existing.movimenti = movimenti;
-        } else {
-          PAGAMENTI.push({ name: row.member_name, saldo: row.saldo || 0, movimenti: movimenti });
-        }
-      });
-    }
-  } catch(e) { console.warn('[load pagamenti]', e.message); }
+  if (pagRes.data && pagRes.data.length) {
+    pagRes.data.forEach(function(row) {
+      var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+      var movimenti = [];
+      try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti || []); } catch(e) {}
+      if (existing) { existing.saldo = row.saldo || 0; existing.movimenti = movimenti; }
+      else PAGAMENTI.push({ name: row.member_name, saldo: row.saldo || 0, movimenti: movimenti });
+    });
+  } else if (pagRes.error) { console.warn('[load pagamenti]', pagRes.error.message || pagRes.error); }
 
   // 8. CHAT (ultimi 200 messaggi)
-  try {
-    var chatRes = await sb.from('chat').select('*').order('ts', { ascending: true }).limit(200);
-    if (chatRes.data && chatRes.data.length) {
-      CHAT = chatRes.data.map(function(c) {
-        var d = new Date(c.ts);
-        var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-        return { id: c.id, who: c.author, testo: c.text, ora: ora, ts: d.getTime() };
-      });
-    }
-  } catch(e) { console.warn('[load chat]', e.message); }
+  if (chatRes.data && chatRes.data.length) {
+    CHAT = chatRes.data.map(function(c) {
+      var d = new Date(c.ts);
+      var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      return { id: c.id, who: c.author, testo: c.text, ora: ora, ts: d.getTime() };
+    });
+  } else if (chatRes.error) { console.warn('[load chat]', chatRes.error.message || chatRes.error); }
 
   // 9. LOG (ultimi 500)
-  try {
-    var logRes = await sb.from('log').select('*').order('ts', { ascending: false }).limit(500);
-    if (logRes.data && logRes.data.length) {
-      LOG = logRes.data.map(function(l) {
-        var d = new Date(l.ts);
-        var tempo = 'OGGI · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-        var member = MEMBERS.find(function(m){ return m.name === l.author; }) || { name: l.author, initial: l.author.charAt(0), color: '#444', role: 'utente' };
-        return { member: member, azione: l.action, tempo: tempo, _id: l.id };
-      });
-    }
-  } catch(e) { console.warn('[load log]', e.message); }
+  if (logRes.data && logRes.data.length) {
+    LOG = logRes.data.map(function(l) {
+      var d = new Date(l.ts);
+      var tempo = 'OGGI · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      var member = MEMBERS.find(function(m){ return m.name === l.author; }) || { name: l.author, initial: l.author.charAt(0), color: '#444', role: 'utente' };
+      return { member: member, azione: l.action, tempo: tempo, _id: l.id };
+    });
+  } else if (logRes.error) { console.warn('[load log]', logRes.error.message || logRes.error); }
 
   // 10. SUGGERIMENTI
-  try {
-    var sugRes = await sb.from('suggerimenti').select('*').order('ts', { ascending: false });
-    if (sugRes.data && sugRes.data.length) {
-      SUGGERIMENTI = sugRes.data.map(function(s) {
-        return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
-      });
-    }
-  } catch(e) { console.warn('[load suggerimenti]', e.message); }
+  if (sugRes.data && sugRes.data.length) {
+    SUGGERIMENTI = sugRes.data.map(function(s) {
+      return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
+    });
+  } else if (sugRes.error) { console.warn('[load suggerimenti]', sugRes.error.message || sugRes.error); }
 
   // 11. VALUTAZIONI
-  try {
-    var valRes = await sb.from('valutazioni').select('*').order('ts', { ascending: false });
-    if (valRes.data && valRes.data.length) {
-      VALUTAZIONI = valRes.data.map(function(v) {
-        return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
-      });
-    }
-  } catch(e) { console.warn('[load valutazioni]', e.message); }
-
-  // Migrazione da appstate: non più necessaria, gestita via SQL fix_primary_keys.sql
+  if (valRes.data && valRes.data.length) {
+    VALUTAZIONI = valRes.data.map(function(v) {
+      return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
+    });
+  } else if (valRes.error) { console.warn('[load valutazioni]', valRes.error.message || valRes.error); }
 }
 
 // ── REALTIME ─────────────────────────────
