@@ -568,8 +568,30 @@ var _calendarioChannel= null;
 var _spesaChannel     = null;
 var _pagamentiChannel = null;
 var _lavoriChannel    = null;
+var _realtimeActive   = false;
 // Set di "author|testo" dei messaggi inviati da noi, per bloccare il realtime echo
 var _pendingChatKeys = {};
+
+// ── STOP REALTIME — chiude tutti i canali aperti ─────────────────────────────
+function stopRealtime() {
+  if (!_realtimeActive) return;
+  var sb = getSupabase();
+  var channels = [_chatChannel, _logChannel, _magazzinoChannel, _calendarioChannel, _spesaChannel, _pagamentiChannel, _lavoriChannel];
+  channels.forEach(function(ch) {
+    if (ch) {
+      try { sb.removeChannel(ch); } catch(e) {}
+    }
+  });
+  _chatChannel = null;
+  _logChannel = null;
+  _magazzinoChannel = null;
+  _calendarioChannel = null;
+  _spesaChannel = null;
+  _pagamentiChannel = null;
+  _lavoriChannel = null;
+  _realtimeActive = false;
+  console.log('[realtime] tutti i canali chiusi');
+}
 
 function initRealtime() {
   // Controllo ruolo: solo admin e staff possono usare il realtime
@@ -579,6 +601,13 @@ function initRealtime() {
     initPolling();
     return;
   }
+
+  // Evita doppia inizializzazione — chiudi prima i canali eventualmente già aperti
+  if (_realtimeActive) {
+    console.log('[realtime] già attivo — reinizializzazione canali');
+    stopRealtime();
+  }
+  _realtimeActive = true;
 
   var sb = getSupabase();
 
@@ -635,10 +664,24 @@ function initRealtime() {
         var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
         if (item) {
           item.attuale = row.attuale;
-          buildMagazzino();
-          syncMagazzinoWithSpesa();
-          updateDash();
+        } else {
+          // item_id non ancora in cache locale — ricarica l'intera tabella magazzino
+          getSupabase().from('magazzino').select('*').then(function(res) {
+            if (res.data) {
+              res.data.forEach(function(r) {
+                var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
+                if (it) it.attuale = r.attuale;
+              });
+            }
+            buildMagazzino();
+            syncMagazzinoWithSpesa();
+            updateDash();
+          });
+          return;
         }
+        buildMagazzino();
+        syncMagazzinoWithSpesa();
+        updateDash();
       } else if (payload.eventType === 'DELETE') {
         buildMagazzino();
         updateDash();
@@ -748,6 +791,27 @@ function initRealtime() {
       buildLavori(); updateDash();
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Lavori realtime OK'); });
+}
+
+// ── HOOKS LOGIN/LOGOUT ───────────────────────────────────────────────────────
+// Chiamare onUserLogin() DOPO aver impostato currentUser nel flusso di login.
+// Gestisce automaticamente: chiusura canali precedenti, avvio realtime (staff/admin)
+// oppure polling (altri ruoli), stop polling se era attivo.
+function onUserLogin() {
+  var role = currentUser && currentUser.role ? currentUser.role : '';
+  if (role === 'admin' || role === 'staff') {
+    stopPolling();
+    initRealtime();
+  } else {
+    stopRealtime();
+    initPolling();
+  }
+}
+
+// Chiamare onUserLogout() al logout per chiudere canali e fermare polling.
+function onUserLogout() {
+  stopRealtime();
+  stopPolling();
 }
 
 // ── POLLING (utenti normali livelli 1-3 e guest) ──────────────────────────
