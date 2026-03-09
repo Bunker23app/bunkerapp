@@ -657,37 +657,47 @@ function initRealtime() {
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Log realtime OK'); });
 
-  // ── MAGAZZINO realtime — UPDATE / INSERT / DELETE ─────────────────────────
+  // ── MAGAZZINO realtime — INSERT / UPDATE / DELETE ─────────────────────────
   _magazzinoChannel = sb.channel('magazzino-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'magazzino' }, function(payload) {
-      if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-        var row = payload.new;
-        if (!row) return;
-        var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-        if (item) {
-          item.attuale = row.attuale;
-        } else {
-          // item_id non ancora in cache locale — ricarica l'intera tabella magazzino
-          getSupabase().from('magazzino').select('*').then(function(res) {
-            if (res.data) {
-              res.data.forEach(function(r) {
-                var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
-                if (it) it.attuale = r.attuale;
-              });
-            }
-            buildMagazzino();
-            syncMagazzinoWithSpesa();
-            updateDash();
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'magazzino' }, function(payload) {
+      var row = payload.new; if (!row) return;
+      var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
+      if (item) { item.attuale = row.attuale; }
+      else {
+        getSupabase().from('magazzino').select('*').then(function(res) {
+          if (res.data) res.data.forEach(function(r) {
+            var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
+            if (it) it.attuale = r.attuale;
           });
-          return;
-        }
-        buildMagazzino();
-        syncMagazzinoWithSpesa();
-        updateDash();
-      } else if (payload.eventType === 'DELETE') {
-        buildMagazzino();
-        updateDash();
+          buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+        });
+        return;
       }
+      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
+      var row = payload.new; if (!row) return;
+      var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
+      if (item) { item.attuale = row.attuale; }
+      else {
+        getSupabase().from('magazzino').select('*').then(function(res) {
+          if (res.data) res.data.forEach(function(r) {
+            var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
+            if (it) it.attuale = r.attuale;
+          });
+          buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+        });
+        return;
+      }
+      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
+      var old = payload.old;
+      if (old && old.item_id) {
+        var item = MAGAZZINO.find(function(m){ return m.id === old.item_id; });
+        if (item) item.attuale = 0;
+      }
+      buildMagazzino(); updateDash();
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Magazzino realtime OK'); });
 
@@ -726,10 +736,25 @@ function initRealtime() {
       buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, function(payload) {
-      var old = payload.old; if (!old) return;
-      var idx = EVENTI.findIndex(function(ev){ return ev.id === old.id; });
-      if (idx >= 0) EVENTI.splice(idx, 1);
-      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+      var old = payload.old;
+      if (old && old.id) {
+        var idx = EVENTI.findIndex(function(ev){ return ev.id === old.id; });
+        if (idx >= 0) EVENTI.splice(idx, 1);
+        buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+      } else {
+        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
+        getSupabase().from('calendario').select('*').order('data', { ascending: true }).then(function(res) {
+          if (res.data) {
+            EVENTI = res.data.map(function(e) {
+              var d = new Date(e.data);
+              var obj = { id: e.id, nome: e.titolo, anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(), ora: e.ora||'21:00', tipo: e.tipo||'invito', desc: e.descrizione||'', luogo: e.luogo||'', note: e.note||'', locandina: e.locandina||null, giornoFine: null, meseFine: null, annoFine: null };
+              if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
+              return obj;
+            });
+          }
+          buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+        });
+      }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Calendario realtime OK'); });
 
@@ -749,25 +774,62 @@ function initRealtime() {
       buildSpesa(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spesa' }, function(payload) {
-      var old = payload.old; if (!old) return;
-      var idx = SPESA.findIndex(function(x){ return x.id === old.id; });
-      if (idx >= 0) SPESA.splice(idx, 1);
-      buildSpesa(); updateDash();
+      var old = payload.old;
+      if (old && old.id) {
+        var idx = SPESA.findIndex(function(x){ return x.id === old.id; });
+        if (idx >= 0) SPESA.splice(idx, 1);
+        buildSpesa(); updateDash();
+      } else {
+        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
+        getSupabase().from('spesa').select('*').then(function(res) {
+          if (res.data) SPESA = res.data.map(function(s){ return { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null }; });
+          buildSpesa(); updateDash();
+        });
+      }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Spesa realtime OK'); });
 
-  // ── PAGAMENTI realtime — UPDATE / INSERT ──────────────────────────────────
+  // ── PAGAMENTI realtime — INSERT / UPDATE / DELETE ────────────────────────
   _pagamentiChannel = sb.channel('pagamenti-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'pagamenti' }, function(payload) {
-      var row = payload.new || payload.old; if (!row) return;
-      if (payload.eventType !== 'DELETE') {
-        var movimenti = [];
-        try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
-        var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
-        if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
-        else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
-      }
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pagamenti' }, function(payload) {
+      var row = payload.new; if (!row) return;
+      var movimenti = [];
+      try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+      var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+      if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
+      else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
       buildPagamenti(); updateDash();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pagamenti' }, function(payload) {
+      var row = payload.new; if (!row) return;
+      var movimenti = [];
+      try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+      var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+      if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
+      else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
+      buildPagamenti(); updateDash();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pagamenti' }, function(payload) {
+      var old = payload.old;
+      if (old && old.member_name) {
+        var idx = PAGAMENTI.findIndex(function(p){ return p.name === old.member_name; });
+        if (idx >= 0) PAGAMENTI.splice(idx, 1);
+        buildPagamenti(); updateDash();
+      } else {
+        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
+        getSupabase().from('pagamenti').select('*').then(function(res) {
+          if (res.data) {
+            res.data.forEach(function(row) {
+              var movimenti = [];
+              try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+              var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+              if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
+              else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
+            });
+          }
+          buildPagamenti(); updateDash();
+        });
+      }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Pagamenti realtime OK'); });
 
@@ -787,10 +849,18 @@ function initRealtime() {
       buildLavori(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lavori' }, function(payload) {
-      var old = payload.old; if (!old) return;
-      var idx = LAVORI.findIndex(function(x){ return x.id === old.id; });
-      if (idx >= 0) LAVORI.splice(idx, 1);
-      buildLavori(); updateDash();
+      var old = payload.old;
+      if (old && old.id) {
+        var idx = LAVORI.findIndex(function(x){ return x.id === old.id; });
+        if (idx >= 0) LAVORI.splice(idx, 1);
+        buildLavori(); updateDash();
+      } else {
+        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
+        getSupabase().from('lavori').select('*').then(function(res) {
+          if (res.data) LAVORI = res.data.map(function(l){ return { id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false }; });
+          buildLavori(); updateDash();
+        });
+      }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Lavori realtime OK'); });
 }
