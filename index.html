@@ -742,18 +742,11 @@
 </div>
 
 </div><!-- /phone -->
+<script src="data.js"></script>
 <script>
 // ════════════════════════════════════════
 // UTILS
 // ════════════════════════════════════════
-const MESI = ['GENNAIO','FEBBRAIO','MARZO','APRILE','MAGGIO','GIUGNO','LUGLIO','AGOSTO','SETTEMBRE','OTTOBRE','NOVEMBRE','DICEMBRE'];
-const GIORNI = ['L','M','M','G','V','S','D'];
-const GIORNI_FULL = ['LUNEDÌ','MARTEDÌ','MERCOLEDÌ','GIOVEDÌ','VENERDÌ','SABATO','DOMENICA'];
-
-const TIPO_COLOR = { invito:'#22cc44', premium:'#c8a84b', privato:'#cc2200', segreto:'#a020f0', consigliato:'#00b4dc' };
-const TIPO_LABEL = { invito:'SU INVITO', premium:'PREMIUM', privato:'PRIVATO', segreto:'SEGRETO', consigliato:'CONSIGLIATO' };
-const TIPO_CLASS = { invito:'tipo-invito', premium:'tipo-premium', privato:'tipo-privato', segreto:'tipo-segreto', consigliato:'tipo-consigliato' };
-const TIPO_TAG_CLASS = { invito:'tag-green', premium:'tag-gold', privato:'tag-red', segreto:'tag-purple', consigliato:'tag-cyan' };
 
 function tag(tipo) {
   return '<span class="tag ' + TIPO_TAG_CLASS[tipo] + '">' + TIPO_LABEL[tipo] + '</span>';
@@ -5049,7 +5042,6 @@ function stampaProgrammaEventi() {
 
 
 </script>
-<script src="data.js"></script>
 <script src="supabase.js"></script>
 <script>
 // Service Worker per PWA
