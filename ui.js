@@ -413,12 +413,15 @@ function updateStaffNavBtns() {
 // ════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════
+// enterAsGuest: avvia il polling per ospiti
 function enterAsGuest() {
   guestMode = true;
   currentUser = null;
   buildAll();
   updateHomeAccessLevel();
   navigate('screenHome');
+  // Polling già attivo se avviato dopo loadAllData; altrimenti parte qui
+  if (typeof initPolling === 'function') initPolling();
 }
 
 // ════════════════════════════════════════
@@ -488,6 +491,11 @@ async function doLogin() {
     applyWidgetConfig();
     applyTabConfig();
     showTab('dashboard');
+    // Staff/admin usano realtime — ferma eventuale polling attivo
+    if (typeof stopPolling === 'function') stopPolling();
+  } else {
+    // Utente normale (livelli 1-3): avvia polling se non già attivo
+    if (typeof initPolling === 'function') initPolling();
   }
   updatePageCfgBtns();
   applyPageSections('home');
@@ -535,6 +543,7 @@ function resetSessionTimer() {
 function doLogout() {
   showConfirm('Sei sicuro di voler uscire?', function() {
     clearTimeout(_sessionTimer);
+    stopPolling();
     document.getElementById('screenStaff').classList.remove('is-admin');
     currentUser = null;
     guestMode = false;
@@ -3554,7 +3563,11 @@ document.addEventListener('DOMContentLoaded', function() {
       applyPageSections('bacheca');
       applyPageSections('info');
       updateHomeAccessLevel();
+      // initRealtime avvia il realtime per staff/admin
+      // oppure avvia initPolling per utenti normali/guest (gestito dentro initRealtime)
       initRealtime();
+      // Fallback: se nessuno dei due è ancora stato avviato (es. guest senza login)
+      // il polling viene avviato da enterAsGuest() o già dentro initRealtime()
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
       console.warn('Supabase non raggiungibile:', e.message);

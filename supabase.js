@@ -559,10 +559,15 @@ async function loadAllData() {
 
 // ── REALTIME ─────────────────────────────
 // Il realtime è attivato SOLO per utenti con ruolo admin o staff.
-// Per tutti gli altri ruoli non viene aperta nessuna connessione realtime.
+// Per tutti gli altri ruoli si usa il polling (vedi initPolling).
 
-var _chatChannel = null;
-var _logChannel  = null;
+var _chatChannel      = null;
+var _logChannel       = null;
+var _magazzinoChannel = null;
+var _calendarioChannel= null;
+var _spesaChannel     = null;
+var _pagamentiChannel = null;
+var _lavoriChannel    = null;
 // Set di "author|testo" dei messaggi inviati da noi, per bloccare il realtime echo
 var _pendingChatKeys = {};
 
@@ -570,22 +575,21 @@ function initRealtime() {
   // Controllo ruolo: solo admin e staff possono usare il realtime
   var role = currentUser && currentUser.role ? currentUser.role : '';
   if (role !== 'admin' && role !== 'staff') {
-    console.log('Realtime disabilitato per ruolo: ' + (role || 'guest'));
+    console.log('Realtime disabilitato per ruolo: ' + (role || 'guest') + ' — avvio polling');
+    initPolling();
     return;
   }
 
   var sb = getSupabase();
 
-  // CHAT realtime — INSERT in tempo reale
+  // ── CHAT realtime — INSERT / DELETE ──────────────────────────────────────
   _chatChannel = sb.channel('chat-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat' }, function(payload) {
       var c = payload.new;
       if (!c) return;
-      // Evita duplicati: controlla se questo messaggio è stato inviato da noi
       var key = c.author + '|' + c.text;
       if (_pendingChatKeys[key]) {
         delete _pendingChatKeys[key];
-        // Aggiorna l'id reale sul messaggio già in CHAT
         var existing = CHAT.find(function(m){ return m.who === c.author && m.testo === c.text && !m.id; });
         if (existing) existing.id = c.id;
         return;
@@ -599,17 +603,15 @@ function initRealtime() {
       updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat' }, function() {
-      // Svuotamento remoto
       CHAT = []; buildChat(); updateDash();
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Chat realtime OK'); });
 
-  // LOG realtime — INSERT in tempo reale
+  // ── LOG realtime — INSERT / DELETE ───────────────────────────────────────
   _logChannel = sb.channel('log-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'log' }, function(payload) {
       var l = payload.new;
       if (!l) return;
-      // Evita duplicati
       if (LOG.some(function(e){ return e._id === l.id; })) return;
       var d = new Date(l.ts);
       var tempo = 'OGGI · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
@@ -623,6 +625,243 @@ function initRealtime() {
       LOG = []; buildLog(); updateDash();
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Log realtime OK'); });
+
+  // ── MAGAZZINO realtime — UPDATE / INSERT / DELETE ─────────────────────────
+  _magazzinoChannel = sb.channel('magazzino-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'magazzino' }, function(payload) {
+      if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+        var row = payload.new;
+        if (!row) return;
+        var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
+        if (item) {
+          item.attuale = row.attuale;
+          buildMagazzino();
+          syncMagazzinoWithSpesa();
+          updateDash();
+        }
+      } else if (payload.eventType === 'DELETE') {
+        buildMagazzino();
+        updateDash();
+      }
+    })
+    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Magazzino realtime OK'); });
+
+  // ── CALENDARIO realtime — INSERT / UPDATE / DELETE ────────────────────────
+  _calendarioChannel = sb.channel('calendario-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calendario' }, function(payload) {
+      var e = payload.new; if (!e) return;
+      if (EVENTI.some(function(ev){ return ev.id === e.id; })) return;
+      var d = new Date(e.data);
+      var obj = {
+        id: e.id, nome: e.titolo,
+        anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
+        ora: e.ora || '21:00', tipo: e.tipo || 'invito',
+        desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
+        locandina: e.locandina || null,
+        giornoFine: null, meseFine: null, annoFine: null,
+      };
+      if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
+      EVENTI.push(obj);
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calendario' }, function(payload) {
+      var e = payload.new; if (!e) return;
+      var idx = EVENTI.findIndex(function(ev){ return ev.id === e.id; });
+      var d = new Date(e.data);
+      var obj = {
+        id: e.id, nome: e.titolo,
+        anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
+        ora: e.ora || '21:00', tipo: e.tipo || 'invito',
+        desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
+        locandina: e.locandina || null,
+        giornoFine: null, meseFine: null, annoFine: null,
+      };
+      if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
+      if (idx >= 0) EVENTI[idx] = obj; else EVENTI.push(obj);
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, function(payload) {
+      var old = payload.old; if (!old) return;
+      var idx = EVENTI.findIndex(function(ev){ return ev.id === old.id; });
+      if (idx >= 0) EVENTI.splice(idx, 1);
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+    })
+    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Calendario realtime OK'); });
+
+  // ── SPESA realtime — INSERT / UPDATE / DELETE ─────────────────────────────
+  _spesaChannel = sb.channel('spesa-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spesa' }, function(payload) {
+      var s = payload.new; if (!s) return;
+      if (SPESA.some(function(x){ return x.id === s.id; })) return;
+      SPESA.push({ id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null });
+      buildSpesa(); updateDash();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spesa' }, function(payload) {
+      var s = payload.new; if (!s) return;
+      var idx = SPESA.findIndex(function(x){ return x.id === s.id; });
+      var mapped = { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null };
+      if (idx >= 0) SPESA[idx] = mapped; else SPESA.push(mapped);
+      buildSpesa(); updateDash();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spesa' }, function(payload) {
+      var old = payload.old; if (!old) return;
+      var idx = SPESA.findIndex(function(x){ return x.id === old.id; });
+      if (idx >= 0) SPESA.splice(idx, 1);
+      buildSpesa(); updateDash();
+    })
+    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Spesa realtime OK'); });
+
+  // ── PAGAMENTI realtime — UPDATE / INSERT ──────────────────────────────────
+  _pagamentiChannel = sb.channel('pagamenti-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pagamenti' }, function(payload) {
+      var row = payload.new || payload.old; if (!row) return;
+      if (payload.eventType !== 'DELETE') {
+        var movimenti = [];
+        try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+        var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+        if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
+        else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
+      }
+      buildPagamenti(); updateDash();
+    })
+    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Pagamenti realtime OK'); });
+
+  // ── LAVORI realtime — INSERT / UPDATE / DELETE ────────────────────────────
+  _lavoriChannel = sb.channel('lavori-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lavori' }, function(payload) {
+      var l = payload.new; if (!l) return;
+      if (LAVORI.some(function(x){ return x.id === l.id; })) return;
+      LAVORI.push({ id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false });
+      buildLavori(); updateDash();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lavori' }, function(payload) {
+      var l = payload.new; if (!l) return;
+      var idx = LAVORI.findIndex(function(x){ return x.id === l.id; });
+      var mapped = { id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false };
+      if (idx >= 0) LAVORI[idx] = mapped; else LAVORI.push(mapped);
+      buildLavori(); updateDash();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lavori' }, function(payload) {
+      var old = payload.old; if (!old) return;
+      var idx = LAVORI.findIndex(function(x){ return x.id === old.id; });
+      if (idx >= 0) LAVORI.splice(idx, 1);
+      buildLavori(); updateDash();
+    })
+    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Lavori realtime OK'); });
+}
+
+// ── POLLING (utenti normali livelli 1-3 e guest) ──────────────────────────
+// Ricarica silenziosamente i dati di home, bacheca e info ogni 3 minuti.
+// Non mostra toast, non interrompe l'utente, non ricarica l'intera app.
+
+var _pollingTimer  = null;
+var _pollingActive = false;
+var POLLING_INTERVAL = 3 * 60 * 1000; // 3 minuti
+
+function initPolling() {
+  if (_pollingActive) return; // già attivo
+  var role = currentUser && currentUser.role ? currentUser.role : '';
+  // Polling solo per utenti non-staff (guest, utente, premium, aiutante)
+  var isStaffRole = (role === 'admin' || role === 'staff');
+  if (isStaffRole) return;
+  _pollingActive = true;
+  console.log('Polling background attivo ogni 3 min (ruolo: ' + (role || 'guest') + ')');
+  _pollingTimer = setInterval(function() { _pollPublicData(); }, POLLING_INTERVAL);
+}
+
+function stopPolling() {
+  if (_pollingTimer) { clearInterval(_pollingTimer); _pollingTimer = null; }
+  _pollingActive = false;
+}
+
+async function _pollPublicData() {
+  if (!_sbReady) return;
+  try {
+    var sb = getSupabase();
+    // Fetch parallelo: config (bacheca, info, consigliati, valutazioni, suggerimenti),
+    // calendario, valutazioni, suggerimenti
+    var results = await Promise.all([
+      sb.from('appconfig').select('data').eq('id', 1).single(),         // 0 — config
+      sb.from('calendario').select('*').order('data', { ascending: true }), // 1 — eventi
+      sb.from('suggerimenti').select('*').order('ts', { ascending: false }), // 2
+      sb.from('valutazioni').select('*').order('ts', { ascending: false }),  // 3
+    ]);
+
+    // 0. CONFIG → aggiorna BACHECA, INFO, CONSIGLIATI, EVENTI_VALUTAZIONI
+    try {
+      var cfgRes = results[0];
+      if (cfgRes.data && cfgRes.data.data) {
+        var cfg = cfgRes.data.data;
+        if (cfg.BACHECA)            BACHECA = cfg.BACHECA;
+        if (cfg.INFO)               INFO = cfg.INFO;
+        if (cfg.CONSIGLIATI)        CONSIGLIATI = cfg.CONSIGLIATI;
+        if (cfg.EVENTI_VALUTAZIONI) EVENTI_VALUTAZIONI = cfg.EVENTI_VALUTAZIONI;
+      }
+    } catch(e) { console.warn('[poll config]', e.message); }
+
+    // 1. CALENDARIO → aggiorna EVENTI
+    try {
+      var calRes = results[1];
+      if (calRes.data) {
+        EVENTI = calRes.data.map(function(e) {
+          var d = new Date(e.data);
+          var obj = {
+            id: e.id, nome: e.titolo,
+            anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
+            ora: e.ora || '21:00', tipo: e.tipo || 'invito',
+            desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
+            locandina: e.locandina || null,
+            giornoFine: null, meseFine: null, annoFine: null,
+          };
+          if (e.data_fine) {
+            var df = new Date(e.data_fine);
+            obj.giornoFine = df.getUTCDate(); obj.meseFine = df.getUTCMonth()+1; obj.annoFine = df.getUTCFullYear();
+          }
+          return obj;
+        });
+      }
+    } catch(e) { console.warn('[poll calendario]', e.message); }
+
+    // 2. SUGGERIMENTI
+    try {
+      var sugRes = results[2];
+      if (sugRes.data) {
+        SUGGERIMENTI = sugRes.data.map(function(s) {
+          return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
+        });
+      }
+    } catch(e) { console.warn('[poll suggerimenti]', e.message); }
+
+    // 3. VALUTAZIONI
+    try {
+      var valRes = results[3];
+      if (valRes.data) {
+        VALUTAZIONI = valRes.data.map(function(v) {
+          return { id: v.id, nome: v.author, stelle: v.stelle||0, testo: v.testo||'', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
+        });
+      }
+    } catch(e) { console.warn('[poll valutazioni]', e.message); }
+
+    // Aggiorna il rendering delle tre pagine pubbliche silenziosamente
+    _refreshPublicPages();
+    console.log('[poll] dati pubblici aggiornati · ' + new Date().toLocaleTimeString('it-IT'));
+  } catch(e) {
+    console.warn('[poll] errore:', e.message);
+  }
+}
+
+// Aggiorna home, bacheca e info senza toccare le pagine staff
+function _refreshPublicPages() {
+  // HOME
+  buildCal();
+  buildHomeNextEvent();
+  buildConsigliati();
+  // BACHECA
+  buildBacheca();
+  buildSuggerimenti();
+  buildValutazioni();
+  // INFO
+  buildInfo();
 }
 
 // ── COMPATIBILITÀ: saveToStorage() ora smista ai save specifici ──
