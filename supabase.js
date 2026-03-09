@@ -734,9 +734,17 @@ function initRealtime() {
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
       // item_id sconosciuto = nuovo articolo custom: la definizione è già stata scritta in appconfig
-      // prima dell'upsert magazzino (vedi saveMagazzino). Aggiunge un piccolo ritardo di sicurezza
-      // nel caso di latenza di rete, poi scarica config + quantità.
-      else { setTimeout(function(){ _reloadMagazzino(true); }, 300); }
+      // prima dell'upsert magazzino (vedi saveMagazzino). Prova subito; se il nuovo articolo
+      // non è ancora presente nel config (latenza DB), riprova dopo 1500ms.
+      else {
+        _reloadMagazzino(true);
+        setTimeout(function(){
+          // Secondo tentativo: verifica se l'articolo è ora in MAGAZZINO
+          if (!MAGAZZINO.find(function(m){ return m.id === row.item_id; })) {
+            _reloadMagazzino(true);
+          }
+        }, 1500);
+      }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
       console.log('[DIAG][magazzino] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));

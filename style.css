@@ -194,6 +194,8 @@ body::before {
   transform:translateX(0);
   pointer-events:auto;
   position:relative;
+  /* spazio per la barra di navigazione fissa in fondo */
+  padding-bottom:calc(54px + env(safe-area-inset-bottom, 0px));
 }
 .screen.slide-out {
   opacity:0;
@@ -295,6 +297,14 @@ body::before {
   display:flex;
   flex-shrink:0;
   box-shadow:0 -1px 20px rgba(0,229,255,0.05);
+  /* sempre fissa in fondo allo schermo */
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  z-index:100;
+  /* safe area per dispositivi con notch/gesture bar */
+  padding-bottom:env(safe-area-inset-bottom, 0px);
 }
 .nav-btn {
   flex:1; background:transparent; border:none;
