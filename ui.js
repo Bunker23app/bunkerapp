@@ -1019,8 +1019,99 @@ function buildHomeNextEvent() {
 }
 
 // ════════════════════════════════════════
-// BACHECA
+// BANNER EVENTO IN CORSO (home)
 // ════════════════════════════════════════
+var _eventoBannerInterval = null;
+
+function buildEventoInCorsoBanner() {
+  var banner = document.getElementById('eventoInCorsoBanner');
+  if (!banner) return;
+
+  // Cerca un evento attualmente in corso:
+  // ora corrente >= ora inizio E ora corrente <= ora fine (stesso giorno) E non terminato
+  var now = new Date();
+  var todayAnno  = now.getFullYear();
+  var todayMese  = now.getMonth() + 1;
+  var todayGiorno= now.getDate();
+  var nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  var evInCorso = null;
+  for (var i = 0; i < EVENTI.length; i++) {
+    var e = EVENTI[i];
+    if (e.terminato) continue;
+    // Controlla che oggi sia compreso tra data inizio e data fine (o stesso giorno)
+    var startDate = new Date(e.anno, e.mese-1, e.giorno);
+    var endDate = e.giornoFine && e.meseFine && e.annoFine
+      ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
+      : startDate;
+    var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
+    if (todayDate < startDate || todayDate > endDate) continue;
+
+    // Analizza ora inizio
+    var oraParts = (e.ora || '').split(':');
+    var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
+
+    // Ora fine: se definita usa quella, altrimenti considera l'evento senza fine definita
+    if (e.ora_fine) {
+      var oraFineParts = e.ora_fine.split(':');
+      var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
+      // Gestisci eventi che finiscono dopo mezzanotte (ora fine < ora inizio)
+      if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60;
+      var nowAdj = nowMinutes;
+      // Se ora corrente è prima dell'inizio, potremmo essere "dopo mezzanotte"
+      if (nowAdj < oraInizioMin && oraFineMin > 24*60) nowAdj += 24 * 60;
+      if (nowAdj >= oraInizioMin && nowAdj <= oraFineMin) {
+        evInCorso = e;
+        break;
+      }
+    } else {
+      // Nessuna ora fine: mostra banner solo se siamo nello stesso giorno e dopo l'ora inizio
+      if (todayDate.getTime() === startDate.getTime() && nowMinutes >= oraInizioMin) {
+        evInCorso = e;
+        break;
+      }
+    }
+  }
+
+  if (evInCorso) {
+    var oraFineLabel = evInCorso.ora_fine ? ' → ' + evInCorso.ora_fine : '';
+    banner.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">' +
+        '<div style="width:8px;height:8px;border-radius:50%;background:#22cc44;flex-shrink:0;animation:blink-anim 1.2s ease-in-out infinite"></div>' +
+        '<div style="min-width:0">' +
+          '<div style="font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#22cc44;margin-bottom:2px">// EVENTO IN CORSO</div>' +
+          '<div style="font-family:var(--mono);font-size:12px;letter-spacing:2px;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + evInCorso.nome + '</div>' +
+          '<div style="font-family:var(--mono);font-size:9px;color:#555;letter-spacing:1px;margin-top:2px">ORE ' + evInCorso.ora + oraFineLabel + (evInCorso.luogo ? ' · ' + evInCorso.luogo.toUpperCase() : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (canEdit()
+        ? '<button onclick="segnaTerminato(' + EVENTI.indexOf(evInCorso) + ')" style="flex-shrink:0;padding:6px 12px;background:transparent;border:1px solid #333;color:#555;font-family:var(--mono);font-size:8px;letter-spacing:2px;cursor:pointer;border-radius:2px;white-space:nowrap">✓ TERMINA</button>'
+        : '');
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
+}
+
+function segnaTerminato(idx) {
+  if (!canEdit()) return;
+  if (idx < 0 || idx >= EVENTI.length) return;
+  EVENTI[idx].terminato = true;
+  saveEventi();
+  buildEventoInCorsoBanner();
+  showToast('// EVENTO SEGNATO COME TERMINATO ✓', 'success');
+}
+
+function startEventoBannerTimer() {
+  if (_eventoBannerInterval) clearInterval(_eventoBannerInterval);
+  buildEventoInCorsoBanner();
+  // Aggiorna ogni 30 secondi per rilevare inizio/fine automatici
+  _eventoBannerInterval = setInterval(buildEventoInCorsoBanner, 30000);
+}
+
+// ════════════════════════════════════════
+
 function buildBacheca() {
   var list = document.getElementById('bachecaList');
   if (!list) return;
@@ -2084,7 +2175,14 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       '<div><label class="modal-label">MM</label><input class="modal-input" id="mMeseFine" type="number" min="1" max="12" value="' + (isEdit && ev.meseFine ? ev.meseFine : '') + '" placeholder="—"/></div>' +
       '<div><label class="modal-label">AAAA</label><input class="modal-input" id="mAnnoFine" type="number" value="' + (isEdit && ev.annoFine ? ev.annoFine : '') + '" placeholder="—"/></div>' +
     '</div>' +
-    '<div><label class="modal-label">// ORA INIZIO</label><input class="modal-input" id="mOra" type="text" placeholder="22:00" value="' + (isEdit ? ev.ora : '') + '"/></div>' +
+    '<div class="modal-row">' +
+      '<div><label class="modal-label">// ORA INIZIO</label><input class="modal-input" id="mOra" type="text" placeholder="22:00" value="' + (isEdit ? ev.ora : '') + '"/></div>' +
+      '<div><label class="modal-label">// ORA FINE <span style="font-size:9px;color:#444">(opz.)</span></label><input class="modal-input" id="mOraFine" type="text" placeholder="02:00" value="' + (isEdit && ev.ora_fine ? ev.ora_fine : '') + '"/></div>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a;margin:4px 0 8px">' +
+      '<input type="checkbox" id="mTerminato" style="width:16px;height:16px;accent-color:#cc2200;cursor:pointer;flex-shrink:0"' + (isEdit && ev.terminato ? ' checked' : '') + '/>' +
+      '<label for="mTerminato" style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#888;cursor:pointer">EVENTO TERMINATO <span style="color:#555">(segnalo manualmente come concluso)</span></label>' +
+    '</div>' +
     '<div><label class="modal-label">// TIPO</label>' +
     '<select class="modal-input" id="mTipo">' +
       '<option value="invito"'      + (isEdit && ev.tipo==='invito'      ? ' selected' : '') + '>SU INVITO</option>' +
@@ -2170,12 +2268,16 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       showToast('⚠ DATA GIÀ OCCUPATA DA: ' + esistente.nome, 'error', 3500);
     }
 
+    var oraFineVal = document.getElementById('mOraFine').value.trim();
+    var terminatoVal = document.getElementById('mTerminato').checked;
     var obj = {
       id: isEdit ? ev.id : getNextId('event'),
       nome: nome,
       giorno: giorno, mese: mese, anno: anno,
       giornoFine: giornoFine, meseFine: meseFine, annoFine: annoFine,
       ora: document.getElementById('mOra').value.trim(),
+      ora_fine: oraFineVal || null,
+      terminato: terminatoVal,
       tipo: document.getElementById('mTipo').value,
       desc: document.getElementById('mDesc').value.trim(),
       note: document.getElementById('mNote').value.trim(),
@@ -3455,6 +3557,7 @@ function openConsigliatiModal(editIdx) {
 function buildAll() {
   // Non resettiamo _unreadChat qui: viene gestito da showTab('chat') e da sendChat()
   buildHomeNextEvent();
+  buildEventoInCorsoBanner();
   buildProfilo();
   buildCal();
   buildSCal();
@@ -3511,6 +3614,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   buildAll();
   updateHomeAccessLevel();
+  startEventoBannerTimer();
 
   // Ripristina sessione
   try {

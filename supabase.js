@@ -115,6 +115,8 @@ function saveEventi() {
           data: dataStr,
           data_fine: dataFineStr,
           ora: e.ora || '',
+          ora_fine: e.ora_fine || null,
+          terminato: e.terminato || false,
           luogo: e.luogo || '',
           note: e.note || '',
           descrizione: e.desc || '',
@@ -484,6 +486,8 @@ async function loadAllData() {
           luogo: e.luogo || '',
           note: e.note || '',
           locandina: e.locandina || null,
+          ora_fine: e.ora_fine || null,
+          terminato: e.terminato || false,
           giornoFine: null, meseFine: null, annoFine: null,
         };
         if (e.data_fine) {
@@ -786,6 +790,8 @@ function initRealtime() {
       ora: e.ora || '21:00', tipo: e.tipo || 'invito',
       desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
       locandina: e.locandina || null,
+      ora_fine: e.ora_fine || null,
+      terminato: e.terminato || false,
       giornoFine: null, meseFine: null, annoFine: null,
     };
     if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
@@ -796,7 +802,7 @@ function initRealtime() {
     getSupabase().from('calendario').select('*').order('data', { ascending: true }).then(function(res) {
       if (res.error) { console.warn('[sb.calendario reload]', res.error.message); return; }
       if (res.data) EVENTI = res.data.map(_mapEventoRow);
-      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildEventoInCorsoBanner(); buildConsigliati(); updateDash();
     });
   }
   _calendarioChannel = sb.channel('calendario-realtime')
@@ -805,14 +811,14 @@ function initRealtime() {
       var e = payload.new; if (!e) return;
       if (EVENTI.some(function(ev){ return ev.id === e.id; })) return;
       EVENTI.push(_mapEventoRow(e));
-      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildEventoInCorsoBanner(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calendario' }, function(payload) {
       console.log('[DIAG][calendario] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var e = payload.new; if (!e) return;
       var idx = EVENTI.findIndex(function(ev){ return ev.id === e.id; });
       if (idx >= 0) EVENTI[idx] = _mapEventoRow(e); else EVENTI.push(_mapEventoRow(e));
-      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildEventoInCorsoBanner(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, function(payload) {
       console.log('[DIAG][calendario] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
@@ -820,7 +826,7 @@ function initRealtime() {
       if (old && old.id) {
         var idx = EVENTI.findIndex(function(ev){ return ev.id === old.id; });
         if (idx >= 0) EVENTI.splice(idx, 1);
-        buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+        buildCal(); buildSCal(); buildHomeNextEvent(); buildEventoInCorsoBanner(); buildConsigliati(); updateDash();
       } else {
         // Fallback: REPLICA IDENTITY non FULL
         _reloadCalendario();
@@ -1048,6 +1054,8 @@ async function _pollPublicData() {
             ora: e.ora || '21:00', tipo: e.tipo || 'invito',
             desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
             locandina: e.locandina || null,
+            ora_fine: e.ora_fine || null,
+            terminato: e.terminato || false,
             giornoFine: null, meseFine: null, annoFine: null,
           };
           if (e.data_fine) {
@@ -1092,6 +1100,7 @@ function _refreshPublicPages() {
   // HOME
   buildCal();
   buildHomeNextEvent();
+  buildEventoInCorsoBanner();
   buildConsigliati();
   // BACHECA
   buildBacheca();
