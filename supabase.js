@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════
-// supabase.js — Bunker23  |  Persistenza Supabase
+// supabase.js v2.2 — Bunker23  |  Persistenza Supabase
 // ════════════════════════════════════════════════════════════════
 // TABELLE:
 //   appconfig    — config globale (JSON blob, id=1)
@@ -26,8 +26,18 @@ let _sb       = null;   // client Supabase (lazy init)
 let _sbReady  = false;  // true dopo loadAllData()
 const _timers = {};     // debounce timer map  { key → timeoutId }
 
-// Per evitare il "echo" realtime dei propri messaggi
+// Per evitare il "echo" realtime dei propri messaggi.
+// Le chiavi vengono auto-eliminate dopo 15s come safety net contro memory leak.
 const _pendingChatKeys = {};
+const _PENDING_CHAT_TTL = 15000;
+
+function _setPendingChat(key) {
+  _pendingChatKeys[key] = setTimeout(() => { delete _pendingChatKeys[key]; }, _PENDING_CHAT_TTL);
+}
+function _clearPendingChat(key) {
+  clearTimeout(_pendingChatKeys[key]);
+  delete _pendingChatKeys[key];
+}
 
 // Canali realtime
 let _chatChannel = null;
@@ -89,8 +99,18 @@ function _dateStr(anno, mese, giorno) {
   return `${anno}-${String(mese).padStart(2,'0')}-${String(giorno).padStart(2,'0')}`;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// SAVE FUNCTIONS
+/** Formatta timestamp log: "OGGI · HH:MM" se oggi, altrimenti "GG/MM · HH:MM" */
+function _formatLogTime(d) {
+  const now = new Date();
+  const isToday = d.getDate() === now.getDate() &&
+                  d.getMonth() === now.getMonth() &&
+                  d.getFullYear() === now.getFullYear();
+  const time = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return 'OGGI · ' + time;
+  return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) + ' · ' + time;
+}
+
+
 // ═════════════════════════════════════════════════════════════════
 
 /**
@@ -109,10 +129,10 @@ function saveConfig() {
       BACHECA, INFO, _nextIds,
     };
     await _sbUpsert('appconfig', { id: 1, data: cfg });
-  }, 800);
+  }, MS_DEBOUNCE);
 }
 
-/** MEMBERS — upsert riga per riga (conflict su 'name') */
+/** MEMBERS — upsert batch in una sola chiamata (conflict su 'name') */
 function saveMembers() {
   _debounce('members', async () => {
     if (!_sbReady) return;
@@ -125,11 +145,9 @@ function saveMembers() {
       foto_url:      m.photo  || null,
       sospeso:       m.sospeso || false,
     }));
-    for (const row of rows) {
-      const { error } = await getSupabase().from('members').upsert(row, { onConflict: 'name' });
-      if (error) console.warn('[sb.members]', error.message);
-    }
-  }, 600);
+    const { error } = await getSupabase().from('members').upsert(rows, { onConflict: 'name' });
+    if (error) console.warn('[sb.members]', error.message);
+  }, MS_DEBOUNCE);
 }
 
 /** EVENTI (calendario) — upsert + pulizia righe orfane */
@@ -165,8 +183,7 @@ function saveEventi() {
         await _sbClear('calendario');
       }
     } catch (e) { console.warn('[sb.calendario]', e.message); }
-    saveConfig();
-  }, 800);
+  }, MS_DEBOUNCE);
 }
 
 /** SPESA — replace totale (delete + insert) */
@@ -190,7 +207,7 @@ function saveSpesa() {
       const { error } = await getSupabase().from('spesa').insert(rows);
       if (error) console.warn('[sb.spesa]', error.message);
     } catch (e) { console.warn('[sb.spesa]', e.message); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 /** LAVORI — replace totale */
@@ -209,7 +226,7 @@ function saveLavori() {
       const { error } = await getSupabase().from('lavori').insert(rows);
       if (error) console.warn('[sb.lavori]', error.message);
     } catch (e) { console.warn('[sb.lavori]', e.message); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 /** MAGAZZINO — upsert quantità (solo item_id + attuale) */
@@ -228,7 +245,7 @@ function saveMagazzino() {
         if (e2) { console.warn('[sb.magazzino]', e2.message); showToast('// ERRORE MAGAZZINO: ' + e2.message, 'error'); }
       }
     } catch (e) { console.warn('[sb.magazzino]', e.message); showToast('// ERRORE MAGAZZINO: ' + e.message, 'error'); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 /** PAGAMENTI — upsert per member_name */
@@ -244,7 +261,7 @@ function savePagamenti() {
       const { error } = await getSupabase().from('pagamenti').upsert(rows, { onConflict: 'member_name' });
       if (error) console.warn('[sb.pagamenti]', error.message);
     } catch (e) { console.warn('[sb.pagamenti]', e.message); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 /** SUGGERIMENTI — replace totale */
@@ -263,7 +280,7 @@ function saveSuggerimenti() {
       const { error } = await getSupabase().from('suggerimenti').insert(rows);
       if (error) console.warn('[sb.suggerimenti]', error.message);
     } catch (e) { console.warn('[sb.suggerimenti]', e.message); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 /** VALUTAZIONI — replace totale */
@@ -283,7 +300,7 @@ function saveValutazioni() {
       const { error } = await getSupabase().from('valutazioni').insert(rows);
       if (error) console.warn('[sb.valutazioni]', error.message);
     } catch (e) { console.warn('[sb.valutazioni]', e.message); }
-  }, 600);
+  }, MS_DEBOUNCE);
 }
 
 // ── INSERT SINGOLI (chat / log) ───────────────────────────────────
@@ -292,15 +309,15 @@ function saveValutazioni() {
 async function saveChatMessage(msg) {
   if (!_sbReady) return;
   const key = `${msg.who}|${msg.testo}`;
-  _pendingChatKeys[key] = true;
+  _setPendingChat(key);
   try {
     const { error } = await getSupabase().from('chat').insert({
       author: msg.who,
       text:   msg.testo,
       ts:     new Date(msg.ts).toISOString(),
     });
-    if (error) { console.warn('[sb.chat]', error.message); delete _pendingChatKeys[key]; }
-  } catch (e) { console.warn('[sb.chat]', e.message); delete _pendingChatKeys[key]; }
+    if (error) { console.warn('[sb.chat]', error.message); _clearPendingChat(key); }
+  } catch (e) { console.warn('[sb.chat]', e.message); _clearPendingChat(key); }
 }
 
 /** Inserisce una riga nel log azioni */
@@ -320,7 +337,8 @@ async function saveLogEntry(entry) {
 async function clearChatRemote() { await _sbClear('chat'); }
 async function clearLogRemote()  { await _sbClear('log');  }
 
-// ── COMPATIBILITÀ: saveToStorage() ───────────────────────────────
+// ── saveToStorage() — usata SOLO da importaDati() dopo import backup ────────
+// Non va chiamata in altri contesti: ogni save-function ha già il proprio debounce.
 function saveToStorage() {
   saveConfig();
   saveMembers();
@@ -336,22 +354,37 @@ function saveToStorage() {
 // ═════════════════════════════════════════════════════════════════
 // APPLY CONFIG  (idempotente — usata da loadAllData)
 // ═════════════════════════════════════════════════════════════════
+
+/**
+ * Applica enabled/label dal salvataggio remoto e riordina l'array locale
+ * rispettando l'ordinamento salvato, preservando item non presenti nel salvataggio.
+ * @param {Array} local  - array locale (es. WIDGET_CONFIG)
+ * @param {Array} saved  - array salvato su Supabase
+ * @param {Function} [applyFn] - funzione opzionale per applicare props extra (es. label)
+ */
+function _applyOrdered(local, saved, applyFn) {
+  if (!saved || !saved.length) return;
+  saved.forEach(ds => {
+    const item = local.find(x => x.id === ds.id);
+    if (!item) return;
+    item.enabled = ds.enabled;
+    if (applyFn) applyFn(item, ds);
+  });
+  const ordered = [];
+  saved.forEach(ds => {
+    const item = local.find(x => x.id === ds.id);
+    if (item) ordered.push(item);
+  });
+  local.forEach(item => { if (!ordered.find(x => x.id === item.id)) ordered.push(item); });
+  local.splice(0, local.length, ...ordered);
+}
+
 function _applyConfig(cfg) {
   if (!cfg) return;
 
   // Widget config — applica enabled/label e rispetta ordinamento salvato
   if (cfg.WIDGET_CONFIG) {
-    cfg.WIDGET_CONFIG.forEach(dw => {
-      const w = WIDGET_CONFIG.find(x => x.id === dw.id);
-      if (w) { w.enabled = dw.enabled; if (dw.label) w.label = dw.label; }
-    });
-    const ordered = [];
-    cfg.WIDGET_CONFIG.forEach(dw => {
-      const w = WIDGET_CONFIG.find(x => x.id === dw.id);
-      if (w) ordered.push(w);
-    });
-    WIDGET_CONFIG.forEach(w => { if (!ordered.find(x => x.id === w.id)) ordered.push(w); });
-    WIDGET_CONFIG.splice(0, WIDGET_CONFIG.length, ...ordered);
+    _applyOrdered(WIDGET_CONFIG, cfg.WIDGET_CONFIG, (item, ds) => { if (ds.label) item.label = ds.label; });
   }
 
   if (cfg.TAB_CONFIG) {
@@ -364,10 +397,7 @@ function _applyConfig(cfg) {
   if (typeof cfg.BENVENUTO_TEXT === 'string') BENVENUTO_TEXT = cfg.BENVENUTO_TEXT;
 
   if (cfg.AIUTANTE_WIDGET_CONFIG) {
-    cfg.AIUTANTE_WIDGET_CONFIG.forEach(dw => {
-      const w = AIUTANTE_WIDGET_CONFIG.find(x => x.id === dw.id);
-      if (w) { w.enabled = dw.enabled; if (dw.label) w.label = dw.label; }
-    });
+    _applyOrdered(AIUTANTE_WIDGET_CONFIG, cfg.AIUTANTE_WIDGET_CONFIG, (item, ds) => { if (ds.label) item.label = ds.label; });
   }
 
   if (cfg.AIUTANTE_TAB_CONFIG) {
@@ -380,15 +410,7 @@ function _applyConfig(cfg) {
   if (cfg.PAGE_SECTIONS) {
     ['home', 'bacheca', 'info'].forEach(page => {
       if (!cfg.PAGE_SECTIONS[page]) return;
-      const ordered = [];
-      cfg.PAGE_SECTIONS[page].forEach(ds => {
-        const s = PAGE_SECTIONS[page].find(x => x.id === ds.id);
-        if (s) { s.enabled = ds.enabled; ordered.push(s); }
-      });
-      PAGE_SECTIONS[page].forEach(s => {
-        if (!ordered.find(x => x.id === s.id)) ordered.push(s);
-      });
-      PAGE_SECTIONS[page].splice(0, PAGE_SECTIONS[page].length, ...ordered);
+      _applyOrdered(PAGE_SECTIONS[page], cfg.PAGE_SECTIONS[page], (item, ds) => { item.enabled = ds.enabled; });
     });
   }
 
@@ -447,9 +469,10 @@ async function loadAllData() {
         if (existing) Object.assign(existing, mapped);
         else MEMBERS.push(mapped);
       });
-      // I MEMBERS sono ora aggiornati da Supabase: restoreSession() può girare in modo sicuro.
-      _membersReady = true;
     }
+    // Segna i membri come pronti subito dopo il load: restoreSession() può ora
+    // validare ruoli e stato sospeso con dati affidabili da Supabase.
+    _membersReady = true;
   } catch (e) { console.warn('[load members]', e.message); }
 
   // 3. CALENDARIO
@@ -564,7 +587,7 @@ async function loadAllData() {
         return {
           member,
           azione: l.action,
-          tempo:  'OGGI · ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+          tempo:  _formatLogTime(d),
           _id:    l.id,
         };
       });
@@ -598,7 +621,9 @@ async function loadAllData() {
     }
   } catch (e) { console.warn('[load valutazioni]', e.message); }
 
-  // Garantisce che _sbReady sia sempre true dopo il caricamento
+  // _sbReady = true garantisce che tutte le save-functions possano operare.
+  // Nota: _membersReady viene impostato subito dopo il load dei members (step 2),
+  // così restoreSession() può validare ruoli/sospeso anche se gli step successivi fallissero.
   _sbReady = true;
 }
 
@@ -617,7 +642,7 @@ function initRealtime() {
       // Blocca eco dei propri messaggi
       const key = `${c.author}|${c.text}`;
       if (_pendingChatKeys[key]) {
-        delete _pendingChatKeys[key];
+        _clearPendingChat(key);
         // Aggiorna id reale sul messaggio ottimistico
         const local = CHAT.find(m => m.who === c.author && m.testo === c.text && !m.id);
         if (local) local.id = c.id;
@@ -656,7 +681,7 @@ function initRealtime() {
       LOG.unshift({
         member,
         azione: l.action,
-        tempo:  'OGGI · ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        tempo:  _formatLogTime(d),
         _id:    l.id,
       });
       _unreadLog++;

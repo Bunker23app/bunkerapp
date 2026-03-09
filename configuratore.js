@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════
-// CONFIGURATORE.JS — Admin panel, widget, sezioni, permessi pagine
+// CONFIGURATORE.JS v2.2 — Admin panel, widget, sezioni, permessi pagine
 // ════════════════════════════════════════════════════════════════
 
 // ── Dati di default ──────────────────────────────────────────────
@@ -454,11 +454,8 @@ function buildPermPagine(container) {
 
 function canEditPage(page) {
   if (!currentUser) return false;
-  var req = PAGE_EDIT_PERMS[page] || 'admin';
-  if (req === ROLES.ADMIN)    return isAdmin();
-  if (req === ROLES.STAFF)    return isStaff();
-  if (req === ROLES.AIUTANTE) return isAiutante();
-  return false;
+  var req = PAGE_EDIT_PERMS[page] || ROLES.ADMIN;
+  return hasRole(req);
 }
 
 function updatePageCfgBtns() {

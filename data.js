@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════
-// DATA.JS — Bunker23
+// DATA.JS v2.2 — Bunker23
 // Variabili globali, costanti, ruoli, auth, gestione sessione
-// Architettura: Supabase (persistenza remota) + localStorage (cache sessione)
+// Architettura: Supabase (persistenza remota) + localStorage (solo token di sessione)
 // ════════════════════════════════════════════════════════════════
 
 // ── RUOLI ────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ const T_CFG_SAVED = '// CONFIGURAZIONE SALVATA ✓';
 
 const MS_TOAST    = 3000;
 const MS_ANIM     = 300;
-const MS_DEBOUNCE = 400;
+const MS_DEBOUNCE = 600; // usato come default in supabase.js _debounce()
 
 // ── TIPO EVENTO ──────────────────────────────────────────────────
 const TIPO_COLOR     = { invito:'#22cc44', premium:'#c8a84b', privato:'#cc2200', segreto:'#a020f0', consigliato:'#00b4dc' };
@@ -331,35 +331,13 @@ function _doLogoutClean() {
   if (typeof updatePageCfgBtns    === 'function') updatePageCfgBtns();
 }
 
-// ── Login ────────────────────────────────────────────────────────
-async function doLogin() {
-  const pw  = ($id('loginPw')?.value ?? '').trim();
-  const err = $id('loginErr');
-  if (!pw) { if (err) err.textContent = '// INSERISCI LA PASSWORD'; return; }
-
-  let member = null;
-  for (const m of MEMBERS) {
-    if (await pwMatch(pw, m.password)) { member = m; break; }
-  }
-
-  if (!member)        { if (err) err.textContent = '// PASSWORD ERRATA';                                   return; }
-  if (member.sospeso) { if (err) err.textContent = '// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE';    return; }
-
-  currentUser = member;
-  guestMode   = false;
-  _writeSession(member);
-
-  if ($id('loginPw')) $id('loginPw').value = '';
-  if (err)            err.textContent = '';
-
-  addLog('si è connesso');
-  resetSessionTimer();
-
+// ── Helper condiviso: applica UI post-login/restore ─────────────
+// Usato da doLogin() e restoreSession() per evitare duplicazione.
+function _applyLoginUI(member, toastMsg) {
   if (typeof buildAll              === 'function') buildAll();
   if (typeof updateHomeAccessLevel === 'function') updateHomeAccessLevel();
   if (typeof updatePageCfgBtns    === 'function') updatePageCfgBtns();
 
-  // Setup staff UI
   if (isAiutante()) {
     const staffAvatar = $id('staffAvatar');
     const staffName   = $id('staffName');
@@ -381,9 +359,35 @@ async function doLogin() {
     applyPageSections('info');
   }
 
-  if (typeof navigate === 'function') navigate('screenHome');
-  if (typeof showToast === 'function') showToast('// BENVENUTO, ' + member.name.toUpperCase(), 'success');
+  if (typeof navigate  === 'function') navigate('screenHome');
+  if (typeof showToast === 'function') showToast(toastMsg, 'success');
   window.scrollTo(0, 0);
+}
+
+// ── Login ────────────────────────────────────────────────────────
+async function doLogin() {
+  const pw  = ($id('loginPw')?.value ?? '').trim();
+  const err = $id('loginErr');
+  if (!pw) { if (err) err.textContent = '// INSERISCI LA PASSWORD'; return; }
+
+  let member = null;
+  for (const m of MEMBERS) {
+    if (await pwMatch(pw, m.password)) { member = m; break; }
+  }
+
+  if (!member)        { if (err) err.textContent = '// PASSWORD ERRATA';                                return; }
+  if (member.sospeso) { if (err) err.textContent = '// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE'; return; }
+
+  currentUser = member;
+  guestMode   = false;
+  _writeSession(member);
+
+  if ($id('loginPw')) $id('loginPw').value = '';
+  if (err)            err.textContent = '';
+
+  addLog('si è connesso');
+  resetSessionTimer();
+  _applyLoginUI(member, '// BENVENUTO, ' + member.name.toUpperCase());
 }
 
 // ── Logout ───────────────────────────────────────────────────────
@@ -429,34 +433,7 @@ function restoreSession() {
   currentUser = member;
   _writeSession(member); // refresh timestamp
   resetSessionTimer();
-
-  if (typeof buildAll              === 'function') buildAll();
-  if (typeof updateHomeAccessLevel === 'function') updateHomeAccessLevel();
-  if (typeof updatePageCfgBtns    === 'function') updatePageCfgBtns();
-
-  if (isAiutante()) {
-    const staffAvatar = $id('staffAvatar');
-    const staffScreen = $id('screenStaff');
-    if (staffAvatar && typeof renderAvatar === 'function') renderAvatar(staffAvatar, member);
-    const staffName = $id('staffName');
-    const staffRole = $id('staffRole');
-    if (staffName) staffName.textContent = member.name.toUpperCase();
-    if (staffRole) staffRole.textContent = roleLabel(member.role).label;
-    if (staffScreen) staffScreen.classList.toggle('is-admin', isAdmin());
-    if (typeof applyBenvenuto    === 'function') applyBenvenuto();
-    if (typeof applyWidgetConfig === 'function') applyWidgetConfig();
-    if (typeof applyTabConfig    === 'function') applyTabConfig();
-    if (typeof showTab           === 'function') showTab('dashboard');
-  }
-
-  if (typeof applyPageSections === 'function') {
-    applyPageSections('home');
-    applyPageSections('bacheca');
-    applyPageSections('info');
-  }
-
-  if (typeof navigate  === 'function') navigate('screenHome');
-  if (typeof showToast === 'function') showToast('// BENTORNATO ' + member.name.toUpperCase(), 'ok');
+  _applyLoginUI(member, '// BENTORNATO ' + member.name.toUpperCase());
   return true;
 }
 
