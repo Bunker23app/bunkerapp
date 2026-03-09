@@ -405,6 +405,9 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load members]', e.message); }
 
+  // Migra password in chiaro → hash ora che MEMBERS è popolato da DB
+  if (typeof migratePasswords === 'function') migratePasswords();
+
   // ── BATCH 2 (parallelo): tutte le altre tabelle ───────────────────────────
   var batch2 = await Promise.all([
     sb.from('calendario').select('*').order('data', { ascending: true }),   // 0
@@ -639,7 +642,7 @@ function saveToStorage() {
 }
 
 // ── PATCH addLog per salvare su tabella log ──
-migratePasswords();
+// migratePasswords() viene chiamata dentro loadAllData() dopo aver caricato i MEMBERS da DB
 
 var _origAddLog = addLog;
 addLog = async function(azione) {

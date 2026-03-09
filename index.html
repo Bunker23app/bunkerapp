@@ -765,6 +765,179 @@ function addLog(azione) {
   updateDash();
 }
 
+// ════════════════════════════════════════
+// AUTH & SESSIONE
+// (qui hanno accesso a navigate, buildAll, showToast, ecc.)
+// ════════════════════════════════════════
+
+function enterAsGuest() {
+  guestMode = true;
+  currentUser = null;
+  buildAll();
+  updateHomeAccessLevel();
+  navigate('screenHome');
+}
+
+// SHA-256 via crypto.subtle
+async function sha256(str) {
+  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return 'sha256:' + Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+}
+
+// Confronto password: gestisce hash e plain
+async function pwMatch(input, stored) {
+  if (stored && stored.startsWith('sha256:')) {
+    return (await sha256(input)) === stored;
+  }
+  return input === stored;
+}
+
+// Migra password in chiaro → hash (chiamata da supabase.js dopo loadAllData)
+async function migratePasswords() {
+  var needsSave = false;
+  for (var i = 0; i < MEMBERS.length; i++) {
+    if (MEMBERS[i].password && !MEMBERS[i].password.startsWith('sha256:')) {
+      MEMBERS[i].password = await sha256(MEMBERS[i].password);
+      needsSave = true;
+    }
+  }
+  if (needsSave && typeof saveMembers === 'function') saveMembers();
+}
+
+async function doLogin() {
+  var pw = document.getElementById('loginPw').value.trim();
+  var err = document.getElementById('loginErr');
+  if (!pw) { err.textContent = '// INSERISCI LA PASSWORD'; return; }
+  if (!MEMBERS.length) { err.textContent = '// CONNESSIONE IN CORSO — RIPROVA TRA UN MOMENTO'; return; }
+  var member = null;
+  for (var i = 0; i < MEMBERS.length; i++) {
+    if (await pwMatch(pw, MEMBERS[i].password)) { member = MEMBERS[i]; break; }
+  }
+  if (!member) { err.textContent = '// PASSWORD ERRATA'; return; }
+  if (member.sospeso) { err.textContent = '// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE'; return; }
+  currentUser = member;
+  try {
+    localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
+  } catch(e) {}
+  guestMode = false;
+  document.getElementById('loginPw').value = '';
+  err.textContent = '';
+  addLog('si è connesso');
+  buildAll();
+  updateHomeAccessLevel();
+  window.scrollTo(0, 0);
+  showToast('// BENVENUTO, ' + member.name.toUpperCase(), 'success');
+  resetSessionTimer();
+  if (member.role === ROLES.STAFF || member.role === ROLES.ADMIN || member.role === ROLES.AIUTANTE) {
+    renderAvatar(document.getElementById('staffAvatar'), member);
+    document.getElementById('staffName').textContent = member.name.toUpperCase();
+    document.getElementById('staffRole').textContent = roleLabel(member.role).label;
+    var staffScreen = document.getElementById('screenStaff');
+    staffScreen.classList.toggle('is-admin', member.role === ROLES.ADMIN);
+    applyBenvenuto();
+    applyWidgetConfig();
+    applyTabConfig();
+    showTab('dashboard');
+  }
+  updatePageCfgBtns();
+  applyPageSections('home');
+  applyPageSections('bacheca');
+  applyPageSections('info');
+  navigate('screenHome');
+}
+
+function goToLogin() {
+  var t = document.getElementById('loginTitle');
+  var s = document.getElementById('loginSub');
+  if (t) t.textContent = 'ACCESSO';
+  if (s) s.textContent = 'INSERISCI LA PASSWORD';
+  navigate('screenLogin');
+}
+
+// Timeout sessione — 30 minuti di inattività
+var _sessionTimer = null;
+var SESSION_TIMEOUT = 30 * 60 * 1000;
+
+function resetSessionTimer() {
+  if (!currentUser) return;
+  clearTimeout(_sessionTimer);
+  _sessionTimer = setTimeout(function() {
+    if (!currentUser) return;
+    showToast('// SESSIONE SCADUTA · EFFETTUA NUOVAMENTE IL LOGIN', 'error');
+    setTimeout(function() {
+      document.getElementById('screenStaff').classList.remove('is-admin');
+      currentUser = null;
+      guestMode = false;
+      try { localStorage.removeItem('bunker23_session'); } catch(e) {}
+      buildAll();
+      updateHomeAccessLevel();
+      updatePageCfgBtns();
+      navigate('screenSplash');
+    }, 2000);
+  }, SESSION_TIMEOUT);
+}
+
+['click','touchstart','keydown','scroll'].forEach(function(evt) {
+  document.addEventListener(evt, resetSessionTimer, { passive: true });
+});
+
+function doLogout() {
+  showConfirm('Sei sicuro di voler uscire?', function() {
+    clearTimeout(_sessionTimer);
+    document.getElementById('screenStaff').classList.remove('is-admin');
+    currentUser = null;
+    guestMode = false;
+    try { localStorage.removeItem('bunker23_session'); } catch(e) {}
+    buildAll();
+    updateHomeAccessLevel();
+    updatePageCfgBtns();
+    navigate('screenSplash');
+  }, 'CONFERMA USCITA', 'ESCI');
+}
+
+// Ripristina sessione — chiamata DOPO che Supabase ha caricato i MEMBERS
+function restoreSession() {
+  try {
+    var savedSession = localStorage.getItem('bunker23_session');
+    if (!savedSession) return;
+    var sess = JSON.parse(savedSession);
+    var elapsed = Date.now() - (sess.ts || 0);
+    var isStaffRole = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
+    var MAX_SESSION = isStaffRole ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
+    if (elapsed >= MAX_SESSION) {
+      localStorage.removeItem('bunker23_session');
+      return;
+    }
+    var member = MEMBERS.find(function(m) { return m.name === sess.name; });
+    if (!member) {
+      // Membro non trovato in MEMBERS (forse DB non ancora caricato o utente rimosso)
+      localStorage.removeItem('bunker23_session');
+      return;
+    }
+    currentUser = member;
+    localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
+    resetSessionTimer();
+    buildAll();
+    updateHomeAccessLevel();
+    updatePageCfgBtns();
+    if (member.role === ROLES.STAFF || member.role === ROLES.ADMIN || member.role === ROLES.AIUTANTE) {
+      renderAvatar(document.getElementById('staffAvatar'), member);
+      document.getElementById('staffName').textContent = member.name.toUpperCase();
+      document.getElementById('staffRole').textContent = roleLabel(member.role).label;
+      var staffScreen = document.getElementById('screenStaff');
+      staffScreen.classList.toggle('is-admin', member.role === ROLES.ADMIN);
+      applyBenvenuto();
+      applyWidgetConfig();
+      applyTabConfig();
+      showTab('dashboard');
+    }
+    applyPageSections('home');
+    applyPageSections('bacheca');
+    applyPageSections('info');
+    navigate('screenHome');
+    showToast('// BENTORNATO ' + member.name.toUpperCase(), 'ok');
+  } catch(e) { console.warn('[restoreSession]', e); }
+}
 
 // ════════════════════════════════════════
 // CONSOLIDATED UTILITIES
@@ -4652,18 +4825,17 @@ document.addEventListener('DOMContentLoaded', function() {
   buildAll();
   updateHomeAccessLevel();
 
-  // Ripristina sessione
-  restoreSession();
-
-
-  // Carica tutti i dati da Supabase in background
+  // Carica tutti i dati da Supabase.
+  // restoreSession() viene chiamata DOPO loadAllData() in modo che
+  // MEMBERS sia gia' popolato dal DB prima di cercare l'utente salvato.
   (async function() {
     try {
       _sbReady = true;
       await loadAllData();
+      // Ripristina sessione SOLO dopo aver caricato i MEMBERS da Supabase
+      restoreSession();
       buildAll();
       if (currentUser) {
-        // Aggiorna riferimento currentUser con dati freschi da DB
         var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
         if (updated) currentUser = updated;
         applyWidgetConfig();
@@ -4675,6 +4847,8 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch(e) {
       console.warn('Supabase non raggiungibile:', e.message);
       _sbReady = false;
+      // Fallback offline: restoreSession senza MEMBERS da DB (sessione probabilmente vuota)
+      restoreSession();
     }
   })();
   // Feedback: flash breve sul logo splash prima di mostrare la schermata
