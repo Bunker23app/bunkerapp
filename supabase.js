@@ -670,18 +670,21 @@ function initRealtime() {
   }
   _magazzinoChannel = sb.channel('magazzino-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'magazzino' }, function(payload) {
+      console.log('[DIAG][magazzino] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
       else { _reloadMagazzino(); }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
+      console.log('[DIAG][magazzino] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
       else { _reloadMagazzino(); }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
+      console.log('[DIAG][magazzino] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.item_id) {
         // REPLICA IDENTITY FULL: old contiene item_id
@@ -694,7 +697,7 @@ function initRealtime() {
         _reloadMagazzino();
       }
     })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Magazzino realtime OK'); });
+    .subscribe(function(status) { console.log('[DIAG][magazzino] subscribe status:', status); });
 
   // ── CALENDARIO realtime — INSERT / UPDATE / DELETE ────────────────────────
   function _mapEventoRow(e) {
@@ -720,18 +723,21 @@ function initRealtime() {
   }
   _calendarioChannel = sb.channel('calendario-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calendario' }, function(payload) {
+      console.log('[DIAG][calendario] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var e = payload.new; if (!e) return;
       if (EVENTI.some(function(ev){ return ev.id === e.id; })) return;
       EVENTI.push(_mapEventoRow(e));
       buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calendario' }, function(payload) {
+      console.log('[DIAG][calendario] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var e = payload.new; if (!e) return;
       var idx = EVENTI.findIndex(function(ev){ return ev.id === e.id; });
       if (idx >= 0) EVENTI[idx] = _mapEventoRow(e); else EVENTI.push(_mapEventoRow(e));
       buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, function(payload) {
+      console.log('[DIAG][calendario] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.id) {
         var idx = EVENTI.findIndex(function(ev){ return ev.id === old.id; });
@@ -742,7 +748,7 @@ function initRealtime() {
         _reloadCalendario();
       }
     })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Calendario realtime OK'); });
+    .subscribe(function(status) { console.log('[DIAG][calendario] subscribe status:', status); });
 
   // ── SPESA realtime — INSERT / UPDATE / DELETE ─────────────────────────────
   function _mapSpesaRow(s) {
@@ -758,18 +764,21 @@ function initRealtime() {
   }
   _spesaChannel = sb.channel('spesa-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spesa' }, function(payload) {
+      console.log('[DIAG][spesa] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var s = payload.new; if (!s) return;
       if (SPESA.some(function(x){ return x.id === s.id; })) return;
       SPESA.push(_mapSpesaRow(s));
       buildSpesa(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spesa' }, function(payload) {
+      console.log('[DIAG][spesa] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var s = payload.new; if (!s) return;
       var idx = SPESA.findIndex(function(x){ return x.id === s.id; });
       if (idx >= 0) SPESA[idx] = _mapSpesaRow(s); else SPESA.push(_mapSpesaRow(s));
       buildSpesa(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spesa' }, function(payload) {
+      console.log('[DIAG][spesa] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.id) {
         var idx = SPESA.findIndex(function(x){ return x.id === old.id; });
@@ -780,7 +789,7 @@ function initRealtime() {
         _reloadSpesa();
       }
     })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Spesa realtime OK'); });
+    .subscribe(function(status) { console.log('[DIAG][spesa] subscribe status:', status); });
 
   // ── PAGAMENTI realtime — INSERT / UPDATE / DELETE ────────────────────────
   function _mapPagamentiRow(row) {
@@ -805,6 +814,7 @@ function initRealtime() {
   }
   _pagamentiChannel = sb.channel('pagamenti-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pagamenti' }, function(payload) {
+      console.log('[DIAG][pagamenti] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var mapped = _mapPagamentiRow(row);
       var existing = PAGAMENTI.find(function(p){ return p.name === mapped.name; });
@@ -813,6 +823,7 @@ function initRealtime() {
       buildPagamenti(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pagamenti' }, function(payload) {
+      console.log('[DIAG][pagamenti] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var mapped = _mapPagamentiRow(row);
       var existing = PAGAMENTI.find(function(p){ return p.name === mapped.name; });
@@ -821,6 +832,7 @@ function initRealtime() {
       buildPagamenti(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pagamenti' }, function(payload) {
+      console.log('[DIAG][pagamenti] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.member_name) {
         var idx = PAGAMENTI.findIndex(function(p){ return p.name === old.member_name; });
@@ -831,7 +843,7 @@ function initRealtime() {
         _reloadPagamenti();
       }
     })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Pagamenti realtime OK'); });
+    .subscribe(function(status) { console.log('[DIAG][pagamenti] subscribe status:', status); });
 
   // ── LAVORI realtime — INSERT / UPDATE / DELETE ────────────────────────────
   function _mapLavoroRow(l) {
@@ -847,18 +859,21 @@ function initRealtime() {
   }
   _lavoriChannel = sb.channel('lavori-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lavori' }, function(payload) {
+      console.log('[DIAG][lavori] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var l = payload.new; if (!l) return;
       if (LAVORI.some(function(x){ return x.id === l.id; })) return;
       LAVORI.push(_mapLavoroRow(l));
       buildLavori(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lavori' }, function(payload) {
+      console.log('[DIAG][lavori] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var l = payload.new; if (!l) return;
       var idx = LAVORI.findIndex(function(x){ return x.id === l.id; });
       if (idx >= 0) LAVORI[idx] = _mapLavoroRow(l); else LAVORI.push(_mapLavoroRow(l));
       buildLavori(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lavori' }, function(payload) {
+      console.log('[DIAG][lavori] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.id) {
         var idx = LAVORI.findIndex(function(x){ return x.id === old.id; });
@@ -869,7 +884,7 @@ function initRealtime() {
         _reloadLavori();
       }
     })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Lavori realtime OK'); });
+    .subscribe(function(status) { console.log('[DIAG][lavori] subscribe status:', status); });
 }
 
 // ── HOOKS LOGIN/LOGOUT ───────────────────────────────────────────────────────
