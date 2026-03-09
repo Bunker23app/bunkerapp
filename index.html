@@ -6188,20 +6188,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Avvio: carica da localStorage config (immediato), poi da Supabase (aggiornato)
+  // Avvio: la config viene caricata da Supabase in loadAllData()
   var splashGear = document.querySelector('.splash-gear');
   if (splashGear) splashGear.style.animationDuration = '3s';
 
-  // Carica config locale subito per risposta immediata
-  try {
-    var rawCfg = localStorage.getItem('bunker23_config');
-    if (rawCfg) { try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {} }
-    // Fallback: vecchio storageKey
-    else {
-      var rawOld = localStorage.getItem('bunker23_data_v7');
-      if (rawOld) { try { var dOld = JSON.parse(rawOld); _applyConfig(dOld); if(dOld.BACHECA) BACHECA=dOld.BACHECA; if(dOld.INFO) INFO=dOld.INFO; } catch(e) {} }
-    }
-  } catch(e) {}
   buildAll();
   updateHomeAccessLevel();
 
@@ -6701,7 +6691,6 @@ function saveConfig() {
       INFO: INFO,
       _nextIds: _nextIds,
     };
-    try { localStorage.setItem('bunker23_config', JSON.stringify(cfg)); } catch(e) {}
     await _sbUpsert('appconfig', { id: 1, data: cfg });
   }, 800);
 }
@@ -7009,23 +6998,22 @@ function _applyConfig(cfg) {
 async function loadAllData() {
   var sb = getSupabase();
 
+  // ── BATCH 1 (parallelo): config + members ─────────────────────────────────
+  // members deve essere disponibile prima del LOG (batch 2) che lo referenzia
+  var batch1 = await Promise.all([
+    sb.from('appconfig').select('data').eq('id', 1).single(),
+    sb.from('members').select('*'),
+  ]);
+
   // 1. CONFIG
   try {
-    var cfgRes = await sb.from('appconfig').select('data').eq('id', 1).single();
+    var cfgRes = batch1[0];
     if (cfgRes.data && cfgRes.data.data) _applyConfig(cfgRes.data.data);
-    // Fallback localStorage config
-    else {
-      var rawCfg = localStorage.getItem('bunker23_config');
-      if (rawCfg) try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {}
-    }
-  } catch(e) {
-    var rawCfg = localStorage.getItem('bunker23_config');
-    if (rawCfg) try { _applyConfig(JSON.parse(rawCfg)); } catch(e) {}
-  }
+  } catch(e) { console.warn('[load config]', e.message); }
 
   // 2. MEMBERS
   try {
-    var mRes = await sb.from('members').select('*');
+    var mRes = batch1[1];
     if (mRes.data && mRes.data.length) {
       mRes.data.forEach(function(dm) {
         var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
@@ -7040,9 +7028,22 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load members]', e.message); }
 
+  // ── BATCH 2 (parallelo): tutte le altre tabelle ───────────────────────────
+  var batch2 = await Promise.all([
+    sb.from('calendario').select('*').order('data', { ascending: true }),   // 0
+    sb.from('spesa').select('*'),                                            // 1
+    sb.from('lavori').select('*'),                                           // 2
+    sb.from('magazzino').select('*'),                                        // 3
+    sb.from('pagamenti').select('*'),                                        // 4
+    sb.from('chat').select('*').order('ts', { ascending: true }).limit(200), // 5
+    sb.from('log').select('*').order('ts', { ascending: false }).limit(500), // 6
+    sb.from('suggerimenti').select('*').order('ts', { ascending: false }),   // 7
+    sb.from('valutazioni').select('*').order('ts', { ascending: false }),    // 8
+  ]);
+
   // 3. CALENDARIO
   try {
-    var calRes = await sb.from('calendario').select('*').order('data', { ascending: true });
+    var calRes = batch2[0];
     if (calRes.data && calRes.data.length) {
       EVENTI = calRes.data.map(function(e) {
         var d = new Date(e.data);
@@ -7068,7 +7069,6 @@ async function loadAllData() {
         }
         return obj;
       });
-      // Aggiorna _nextIds
       var maxId = EVENTI.reduce(function(m,e){ return Math.max(m, e.id); }, 0);
       if (maxId >= _nextIds.event) _nextIds.event = maxId + 1;
     }
@@ -7076,7 +7076,7 @@ async function loadAllData() {
 
   // 4. SPESA
   try {
-    var spRes = await sb.from('spesa').select('*');
+    var spRes = batch2[1];
     if (spRes.data && spRes.data.length) {
       SPESA = spRes.data.map(function(s) {
         return {
@@ -7093,7 +7093,7 @@ async function loadAllData() {
 
   // 5. LAVORI
   try {
-    var lavRes = await sb.from('lavori').select('*');
+    var lavRes = batch2[2];
     if (lavRes.data && lavRes.data.length) {
       LAVORI = lavRes.data.map(function(l) {
         return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
@@ -7105,7 +7105,7 @@ async function loadAllData() {
 
   // 6. MAGAZZINO (solo quantità)
   try {
-    var mzRes = await sb.from('magazzino').select('*');
+    var mzRes = batch2[3];
     if (mzRes.data && mzRes.data.length) {
       mzRes.data.forEach(function(row) {
         var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
@@ -7116,7 +7116,7 @@ async function loadAllData() {
 
   // 7. PAGAMENTI
   try {
-    var pagRes = await sb.from('pagamenti').select('*');
+    var pagRes = batch2[4];
     if (pagRes.data && pagRes.data.length) {
       pagRes.data.forEach(function(row) {
         var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
@@ -7134,7 +7134,7 @@ async function loadAllData() {
 
   // 8. CHAT (ultimi 200 messaggi)
   try {
-    var chatRes = await sb.from('chat').select('*').order('ts', { ascending: true }).limit(200);
+    var chatRes = batch2[5];
     if (chatRes.data && chatRes.data.length) {
       CHAT = chatRes.data.map(function(c) {
         var d = new Date(c.ts);
@@ -7146,7 +7146,7 @@ async function loadAllData() {
 
   // 9. LOG (ultimi 500)
   try {
-    var logRes = await sb.from('log').select('*').order('ts', { ascending: false }).limit(500);
+    var logRes = batch2[6];
     if (logRes.data && logRes.data.length) {
       LOG = logRes.data.map(function(l) {
         var d = new Date(l.ts);
@@ -7159,7 +7159,7 @@ async function loadAllData() {
 
   // 10. SUGGERIMENTI
   try {
-    var sugRes = await sb.from('suggerimenti').select('*').order('ts', { ascending: false });
+    var sugRes = batch2[7];
     if (sugRes.data && sugRes.data.length) {
       SUGGERIMENTI = sugRes.data.map(function(s) {
         return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
@@ -7169,7 +7169,7 @@ async function loadAllData() {
 
   // 11. VALUTAZIONI
   try {
-    var valRes = await sb.from('valutazioni').select('*').order('ts', { ascending: false });
+    var valRes = batch2[8];
     if (valRes.data && valRes.data.length) {
       VALUTAZIONI = valRes.data.map(function(v) {
         return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
