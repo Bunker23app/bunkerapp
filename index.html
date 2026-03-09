@@ -3708,7 +3708,10 @@ async function cambiaPassword() {
   setTimeout(function() { errEl.textContent = ''; errEl.style.color = 'var(--red)'; }, MS_TOAST);
 }
 
-<script src="configuratore.js"></script>
+// ════════════════════════════════════════
+// CONFIGURATORE ADMIN → caricato da configuratore.js
+// ════════════════════════════════════════
+
 var COLORS = ['#cc2200','#1a6b3c','#1a3a7a','#6b1a6b','#7a4a1a','#2a6b6b','#5a5a1a','#4a2a6b','#6b4a2a','#1a5a5a'];
 
 function openNuovoMembroModal() {
@@ -4668,6 +4671,7 @@ function stampaProgrammaEventi() {
 
 
 </script>
+<script src="configuratore.js"></script>
 <script src="supabase.js"></script>
 <script>
 // Service Worker per PWA
