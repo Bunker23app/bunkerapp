@@ -491,11 +491,11 @@ async function doLogin() {
     applyWidgetConfig();
     applyTabConfig();
     showTab('dashboard');
-    // Staff/admin usano realtime — ferma eventuale polling attivo
-    if (typeof stopPolling === 'function') stopPolling();
+    // Staff/admin usano realtime — ferma polling e inizializza canali
+    if (typeof onUserLogin === 'function') onUserLogin();
   } else {
     // Utente normale (livelli 1-3): avvia polling se non già attivo
-    if (typeof initPolling === 'function') initPolling();
+    if (typeof onUserLogin === 'function') onUserLogin();
   }
   updatePageCfgBtns();
   applyPageSections('home');
@@ -524,6 +524,7 @@ function resetSessionTimer() {
     showToast('// SESSIONE SCADUTA · EFFETTUA NUOVAMENTE IL LOGIN', 'error');
     setTimeout(function() {
       document.getElementById('screenStaff').classList.remove('is-admin');
+      if (typeof onUserLogout === 'function') onUserLogout();
       currentUser = null;
       guestMode = false;
       try { localStorage.removeItem('bunker23_session'); } catch(e) {}
@@ -543,7 +544,7 @@ function resetSessionTimer() {
 function doLogout() {
   showConfirm('Sei sicuro di voler uscire?', function() {
     clearTimeout(_sessionTimer);
-    stopPolling();
+    if (typeof onUserLogout === 'function') onUserLogout();
     document.getElementById('screenStaff').classList.remove('is-admin');
     currentUser = null;
     guestMode = false;
@@ -3563,11 +3564,12 @@ document.addEventListener('DOMContentLoaded', function() {
       applyPageSections('bacheca');
       applyPageSections('info');
       updateHomeAccessLevel();
-      // initRealtime avvia il realtime per staff/admin
-      // oppure avvia initPolling per utenti normali/guest (gestito dentro initRealtime)
-      initRealtime();
-      // Fallback: se nessuno dei due è ancora stato avviato (es. guest senza login)
-      // il polling viene avviato da enterAsGuest() o già dentro initRealtime()
+      // Avvia realtime (staff/admin) o polling (altri ruoli/guest) DOPO che i dati
+      // sono stati caricati dal DB e currentUser è aggiornato con il ruolo reale.
+      // onUserLogin() gestisce automaticamente entrambi i casi.
+      if (typeof onUserLogin === 'function') {
+        onUserLogin();
+      }
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
       console.warn('Supabase non raggiungibile:', e.message);

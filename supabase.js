@@ -597,7 +597,7 @@ function initRealtime() {
   // Controllo ruolo: solo admin e staff possono usare il realtime
   var role = currentUser && currentUser.role ? currentUser.role : '';
   if (role !== 'admin' && role !== 'staff') {
-    console.log('Realtime disabilitato per ruolo: ' + (role || 'guest') + ' — avvio polling');
+    console.log('[realtime] disabilitato per ruolo: ' + (role || 'guest') + ' — avvio polling');
     initPolling();
     return;
   }
@@ -608,6 +608,8 @@ function initRealtime() {
     stopRealtime();
   }
   _realtimeActive = true;
+
+  console.log('[realtime] inizializzazione per ' + currentUser.name + ' (' + role + ') · ' + new Date().toLocaleTimeString('it-IT'));
 
   var sb = getSupabase();
 
@@ -794,11 +796,12 @@ function initRealtime() {
 }
 
 // ── HOOKS LOGIN/LOGOUT ───────────────────────────────────────────────────────
-// Chiamare onUserLogin() DOPO aver impostato currentUser nel flusso di login.
-// Gestisce automaticamente: chiusura canali precedenti, avvio realtime (staff/admin)
-// oppure polling (altri ruoli), stop polling se era attivo.
+// onUserLogin() va chiamato DOPO aver impostato currentUser E dopo loadAllData().
+// In questo modo il ruolo è già aggiornato dal DB e i canali vengono aperti
+// con le credenziali corrette. Gestisce: staff/admin → realtime, altri → polling.
 function onUserLogin() {
   var role = currentUser && currentUser.role ? currentUser.role : '';
+  console.log('[auth] onUserLogin · ruolo: ' + (role || 'guest'));
   if (role === 'admin' || role === 'staff') {
     stopPolling();
     initRealtime();
