@@ -596,8 +596,7 @@ async function loadAllData() {
     }
   } catch (e) { console.warn('[load valutazioni]', e.message); }
 
-  // Garantisce che _sbReady sia sempre true dopo il caricamento,
-  // indipendentemente dal percorso di chiamata (enterAsGuest, login, ecc.)
+  // Garantisce che _sbReady sia sempre true dopo il caricamento
   _sbReady = true;
 }
 

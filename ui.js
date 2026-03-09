@@ -3335,21 +3335,21 @@ function enterAsGuest() {
   guestMode   = true;
   currentUser = null;
 
-  // Avvia clock e swipe subito (non dipendono dai dati)
+  // Clock e swipe non dipendono dai dati — avviali subito
   setInterval(updateClocks, 30000);
   updateClocks();
   initSwipe();
 
-  // Carica tutti i dati da Supabase PRIMA di fare qualsiasi altra cosa
+  // Carica tutti i dati da Supabase, poi gestisci sessione e UI
   loadAllData().then(function() {
     _sbReady = true;
     initRealtime();
 
-    // restoreSession DENTRO .then() — trova i MEMBERS aggiornati da Supabase
+    // restoreSession QUI — trova i MEMBERS già aggiornati da Supabase
     var sessionRestored = restoreSession();
 
     if (!sessionRestored) {
-      // Nessuna sessione salvata: mostra home in modalità ospite
+      // Nessuna sessione attiva: mostra home ospite
       buildAll();
       if (typeof applyPageSections === 'function') {
         applyPageSections('home');
@@ -3361,7 +3361,7 @@ function enterAsGuest() {
       updateHomeAccessLevel();
       navigate('screenHome');
     } else {
-      // Sessione ripristinata: applyPageSections e applySplashTexts comunque
+      // Sessione ripristinata: applySplashTexts comunque
       if (typeof applySplashTexts === 'function') applySplashTexts();
     }
   }).catch(function(err) {
@@ -3369,8 +3369,8 @@ function enterAsGuest() {
     _sbReady = true;
     buildAll();
     updateHomeAccessLevel();
-    restoreSession();
-    if (!currentUser) navigate('screenHome');
+    var sessionRestored = restoreSession();
+    if (!sessionRestored) navigate('screenHome');
   });
 }
 
