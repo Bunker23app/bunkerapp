@@ -4997,6 +4997,10 @@ document.addEventListener('DOMContentLoaded', function() {
         applyWidgetConfig();
         applyTabConfig();
       }
+      // Applica subito la config delle sezioni appena i dati Supabase sono pronti
+      applyPageSections('home');
+      applyPageSections('bacheca');
+      applyPageSections('info');
       updateHomeAccessLevel();
       initRealtime();
       console.log('Supabase: tutti i dati caricati');
