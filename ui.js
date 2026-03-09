@@ -3342,15 +3342,6 @@ function stampaProgrammaEventi() {
 // ════════════════════════════════════════
 
 function enterAsGuest() {
-  // Feedback visivo immediato — evita che il tasto sembri non rispondere
-  var enterBtn = document.querySelector('.enter-btn');
-  if (enterBtn) {
-    enterBtn.textContent = '⟳  CARICAMENTO...';
-    enterBtn.style.opacity = '0.6';
-    enterBtn.style.pointerEvents = 'none';
-    enterBtn.style.animation = 'none';
-  }
-
   guestMode   = true;
   currentUser = null;
 
@@ -3359,16 +3350,28 @@ function enterAsGuest() {
   updateClocks();
   initSwipe();
 
-  // Carica tutti i dati da Supabase, poi gestisci sessione e UI
+  // ── Mostra subito la schermata guest con i dati locali (seed) ──
+  buildAll();
+  if (typeof applyPageSections === 'function') {
+    applyPageSections('home');
+    applyPageSections('bacheca');
+    applyPageSections('info');
+  }
+  if (typeof applyGuestMessage === 'function') applyGuestMessage();
+  if (typeof applySplashTexts  === 'function') applySplashTexts();
+  updateHomeAccessLevel();
+  navigate('screenHome');
+
+  // ── Carica i dati da Supabase in background, poi aggiorna l'UI ──
   loadAllData().then(function() {
     _sbReady = true;
     initRealtime();
 
-    // restoreSession QUI — trova i MEMBERS già aggiornati da Supabase
+    // restoreSession DOPO il load — MEMBERS è aggiornato da Supabase
     var sessionRestored = restoreSession();
 
     if (!sessionRestored) {
-      // Nessuna sessione attiva: mostra home ospite
+      // Nessuna sessione valida: aggiorna l'UI guest con i dati freschi
       buildAll();
       if (typeof applyPageSections === 'function') {
         applyPageSections('home');
@@ -3378,9 +3381,7 @@ function enterAsGuest() {
       if (typeof applyGuestMessage === 'function') applyGuestMessage();
       if (typeof applySplashTexts  === 'function') applySplashTexts();
       updateHomeAccessLevel();
-      navigate('screenHome');
     } else {
-      // Sessione ripristinata: applySplashTexts comunque
       if (typeof applySplashTexts === 'function') applySplashTexts();
     }
   }).catch(function(err) {
@@ -3388,8 +3389,7 @@ function enterAsGuest() {
     _sbReady = true;
     buildAll();
     updateHomeAccessLevel();
-    var sessionRestored = restoreSession();
-    if (!sessionRestored) navigate('screenHome');
+    restoreSession();
   });
 }
 

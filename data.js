@@ -400,12 +400,18 @@ function restoreSession() {
   const sess = _readSession();
   if (!sess) return false;
 
-  const elapsed = Date.now() - (sess.ts ?? 0);
-  const ttl     = getSessionTTL(sess.role);
-  if (elapsed >= ttl) { _clearSession(); return false; }
-
+  // Cerca il membro nei dati aggiornati da Supabase
   const member = MEMBERS.find(m => m.name === sess.name);
   if (!member) { _clearSession(); return false; }
+
+  // Usa il role REALE del member (da Supabase), non quello salvato in localStorage.
+  // Questo evita che un vecchio token admin riattivi una sessione privilegiata
+  // se il ruolo è stato cambiato o se il role in storage è corrotto.
+  if (sess.role !== member.role) { _clearSession(); return false; }
+
+  const elapsed = Date.now() - (sess.ts ?? 0);
+  const ttl     = getSessionTTL(member.role);
+  if (elapsed >= ttl) { _clearSession(); return false; }
 
   currentUser = member;
   _writeSession(member); // refresh timestamp
