@@ -266,10 +266,20 @@ function updateStaffNavBtns() {
     if (!ic || !lb) return;
     var btn = ic.closest('button');
     if (isAiutante()) {
-      ic.textContent = '⚙️'; lb.textContent = 'Staff';
+      if (currentUser && currentUser.photo) {
+        ic.innerHTML = avatarHtml(currentUser, 24);
+      } else {
+        ic.textContent = '⚙️';
+      }
+      lb.textContent = 'Staff';
       if (btn) btn.style.display = '';
     } else if (isUtente()) {
-      ic.textContent = '👤'; lb.textContent = 'Profilo';
+      if (currentUser && currentUser.photo) {
+        ic.innerHTML = avatarHtml(currentUser, 24);
+      } else {
+        ic.textContent = '👤';
+      }
+      lb.textContent = 'Profilo';
       if (btn) btn.style.display = '';
     } else {
       ic.textContent = '🔑'; lb.textContent = 'Login';
@@ -798,7 +808,7 @@ function buildHomeNextEvent() {
 
   var today = new Date(); today.setHours(0,0,0,0);
   var next = EVENTI
-    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today; })
+    .filter(function(e) { return e.tipo === 'consigliato' && new Date(e.anno, e.mese-1, e.giorno) >= today; })
     .sort(function(a,b) { return new Date(a.anno,a.mese-1,a.giorno) - new Date(b.anno,b.mese-1,b.giorno); })[0];
 
   if (!next) { el.innerHTML = ''; return; }
