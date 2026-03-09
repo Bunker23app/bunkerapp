@@ -3335,30 +3335,43 @@ function enterAsGuest() {
   guestMode   = true;
   currentUser = null;
 
-  loadAllData().then(function() {
-    _sbReady = true;
-    initRealtime();
-    buildAll();
-    if (typeof applyPageSections === 'function') {
-      applyPageSections('home');
-      applyPageSections('bacheca');
-      applyPageSections('info');
-    }
-    if (typeof applyGuestMessage === 'function') applyGuestMessage();
-    if (typeof applySplashTexts  === 'function') applySplashTexts();
-    updateHomeAccessLevel();
-    navigate('screenHome');
-  }).catch(function(err) {
-    console.warn('[enterAsGuest] loadAllData error:', err);
-    buildAll();
-    updateHomeAccessLevel();
-    navigate('screenHome');
-  });
-
+  // Avvia clock e swipe subito (non dipendono dai dati)
   setInterval(updateClocks, 30000);
   updateClocks();
   initSwipe();
-  restoreSession();
+
+  // Carica tutti i dati da Supabase PRIMA di fare qualsiasi altra cosa
+  loadAllData().then(function() {
+    _sbReady = true;
+    initRealtime();
+
+    // restoreSession DENTRO .then() — trova i MEMBERS aggiornati da Supabase
+    var sessionRestored = restoreSession();
+
+    if (!sessionRestored) {
+      // Nessuna sessione salvata: mostra home in modalità ospite
+      buildAll();
+      if (typeof applyPageSections === 'function') {
+        applyPageSections('home');
+        applyPageSections('bacheca');
+        applyPageSections('info');
+      }
+      if (typeof applyGuestMessage === 'function') applyGuestMessage();
+      if (typeof applySplashTexts  === 'function') applySplashTexts();
+      updateHomeAccessLevel();
+      navigate('screenHome');
+    } else {
+      // Sessione ripristinata: applyPageSections e applySplashTexts comunque
+      if (typeof applySplashTexts === 'function') applySplashTexts();
+    }
+  }).catch(function(err) {
+    console.warn('[enterAsGuest] loadAllData error:', err);
+    _sbReady = true;
+    buildAll();
+    updateHomeAccessLevel();
+    restoreSession();
+    if (!currentUser) navigate('screenHome');
+  });
 }
 
 function handleStaffBtn() {
