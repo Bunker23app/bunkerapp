@@ -1,7 +1,11 @@
 // ════════════════════════════════════════════════════════════════
-// DATA.JS v2.2 — Bunker23
+// DATA.JS v2.3 — Bunker23
 // Variabili globali, costanti, ruoli, auth, gestione sessione
-// Architettura: Supabase (persistenza remota) + localStorage (solo token di sessione)
+// Architettura: Supabase è l'UNICA fonte di verità per auth e dati.
+// localStorage è usato SOLO come token di sessione leggero (nome +
+// ruolo + timestamp) e viene sempre validato contro i MEMBERS freschi
+// da Supabase prima di essere accettato. Il login è bloccato finché
+// loadAllData() non è completata.
 // ════════════════════════════════════════════════════════════════
 
 // ── RUOLI ────────────────────────────────────────────────────────
@@ -25,8 +29,9 @@ const ROLE_LEVEL = {
 // ── STATO AUTH ───────────────────────────────────────────────────
 let currentUser    = null;   // { name, initial, color, role, photo, sospeso } oppure null
 let guestMode      = false;  // true = accesso ospite (solo calendario pubblico)
+
 // Flag impostato a true solo dopo che loadAllData() ha aggiornato MEMBERS da Supabase.
-// Impedisce che restoreSession() venga eseguita prima che i dati siano attendibili.
+// doLogin() e restoreSession() sono bloccati finché questo flag è false.
 let _membersReady  = false;
 
 // ── SESSION STORAGE KEY ──────────────────────────────────────────
@@ -245,6 +250,9 @@ function toggleItem(array, index, name, buildFn, saveFn) {
 
 // ════════════════════════════════════════════════════════════════
 // AUTH — Login / Logout / Sessione
+// Supabase è l'UNICA fonte di verità.
+// Il login e il ripristino della sessione sono bloccati finché
+// _membersReady è false (loadAllData non ancora completata).
 // ════════════════════════════════════════════════════════════════
 
 // ── Hashing password (SHA-256) ───────────────────────────────────
@@ -271,7 +279,11 @@ async function migratePasswords() {
   if (needsSave && typeof saveMembers === 'function') saveMembers();
 }
 
-// ── Session persistence (localStorage) ──────────────────────────
+// ── Session token (localStorage) ─────────────────────────────────
+// Il token localStorage contiene SOLO nome + ruolo + timestamp.
+// È un segnale di "prova a ripristinare questa sessione", NON una
+// fonte di verità: viene sempre validato contro i MEMBERS freschi
+// da Supabase (password, ruolo, stato sospeso) prima di essere accettato.
 function _writeSession(member) {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -365,7 +377,17 @@ function _applyLoginUI(member, toastMsg) {
 }
 
 // ── Login ────────────────────────────────────────────────────────
+// BLOCCO: il login è disabilitato finché loadAllData() non è completata.
+// Questo garantisce che MEMBERS contenga i dati freschi da Supabase
+// (password aggiornate, ruoli, stato sospeso) e non il seed locale.
 async function doLogin() {
+  // Blocco hard: i dati Supabase non sono ancora arrivati.
+  if (!_membersReady) {
+    const err = $id('loginErr');
+    if (err) err.textContent = '// CARICAMENTO IN CORSO · ATTENDI…';
+    return;
+  }
+
   const pw  = ($id('loginPw')?.value ?? '').trim();
   const err = $id('loginErr');
   if (!pw) { if (err) err.textContent = '// INSERISCI LA PASSWORD'; return; }
@@ -406,24 +428,28 @@ function doLogout() {
 // NOTA: restoreSession() deve essere chiamata SOLO dopo che loadAllData()
 // è completata con successo, così i MEMBERS sono aggiornati da Supabase
 // e il controllo del ruolo e dello stato sospeso è affidabile.
+//
+// Il token in localStorage viene trattato come un suggerimento, NON come
+// fonte di dati: la sessione viene ripristinata solo se tutti i controlli
+// sui MEMBERS freschi di Supabase passano (ruolo, sospeso, TTL).
 function restoreSession() {
-  // Blocco di sicurezza: se loadAllData() non è ancora completata con successo,
-  // i MEMBERS potrebbero essere solo il seed locale. Non ripristinare la sessione.
+  // Blocco di sicurezza: se loadAllData() non è ancora completata,
+  // i MEMBERS potrebbero essere solo il seed locale. Non ripristinare.
   if (!_membersReady) { console.warn('[restoreSession] MEMBERS non ancora pronti — skip'); return false; }
 
   const sess = _readSession();
   if (!sess) return false;
 
-  // Cerca il membro nei dati aggiornati da Supabase
+  // Cerca il membro nei dati FRESCHI da Supabase (non in quelli del token).
   const member = MEMBERS.find(m => m.name === sess.name);
   if (!member) { _clearSession(); return false; }
 
-  // Usa il role REALE del member (da Supabase), non quello salvato in localStorage.
+  // Usa il role REALE del member (da Supabase), non quello salvato nel token.
   // Questo evita che un vecchio token admin riattivi una sessione privilegiata
-  // se il ruolo è stato cambiato o se il role in storage è corrotto.
+  // se il ruolo è stato cambiato lato admin nel frattempo.
   if (sess.role !== member.role) { _clearSession(); return false; }
 
-  // Blocca il ripristino se l'account è stato sospeso nel frattempo
+  // Blocca il ripristino se l'account è stato sospeso nel frattempo.
   if (member.sospeso) { _clearSession(); return false; }
 
   const elapsed = Date.now() - (sess.ts ?? 0);

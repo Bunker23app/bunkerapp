@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════
-// supabase.js v2.2 — Bunker23  |  Persistenza Supabase
+// supabase.js v2.3 — Bunker23  |  Persistenza Supabase
 // ════════════════════════════════════════════════════════════════
 // TABELLE:
 //   appconfig    — config globale (JSON blob, id=1)
@@ -444,20 +444,61 @@ function _applyConfig(cfg) {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// LOAD ALL DATA
+// LOAD ALL DATA  — tutte le query in parallelo con Promise.all
 // ═════════════════════════════════════════════════════════════════
 async function loadAllData() {
   const sb = getSupabase();
 
+  // ── Lancia tutte le query in parallelo ───────────────────────────
+  const [
+    cfgResult,
+    membersResult,
+    calendarioResult,
+    spesaResult,
+    lavoriResult,
+    magazzinoResult,
+    pagamentiResult,
+    chatResult,
+    logResult,
+    suggerimentiResult,
+    valutazioniResult,
+  ] = await Promise.all([
+    // 1. CONFIG
+    sb.from('appconfig').select('data').eq('id', 1).single().catch(e => ({ error: e })),
+    // 2. MEMBERS
+    sb.from('members').select('*').catch(e => ({ error: e })),
+    // 3. CALENDARIO
+    sb.from('calendario').select('*').order('data', { ascending: true }).catch(e => ({ error: e })),
+    // 4. SPESA
+    sb.from('spesa').select('*').catch(e => ({ error: e })),
+    // 5. LAVORI
+    sb.from('lavori').select('*').catch(e => ({ error: e })),
+    // 6. MAGAZZINO
+    sb.from('magazzino').select('*').catch(e => ({ error: e })),
+    // 7. PAGAMENTI
+    sb.from('pagamenti').select('*').catch(e => ({ error: e })),
+    // 8. CHAT (ultimi 200)
+    sb.from('chat').select('*').order('ts', { ascending: true }).limit(200).catch(e => ({ error: e })),
+    // 9. LOG (ultimi 500)
+    sb.from('log').select('*').order('ts', { ascending: false }).limit(500).catch(e => ({ error: e })),
+    // 10. SUGGERIMENTI
+    sb.from('suggerimenti').select('*').order('ts', { ascending: false }).catch(e => ({ error: e })),
+    // 11. VALUTAZIONI
+    sb.from('valutazioni').select('*').order('ts', { ascending: false }).catch(e => ({ error: e })),
+  ]);
+
+  // ── Applica i risultati ───────────────────────────────────────────
+
   // 1. CONFIG
   try {
-    const { data: cfgRow, error } = await sb.from('appconfig').select('data').eq('id', 1).single();
-    if (!error && cfgRow?.data) _applyConfig(cfgRow.data);
+    if (!cfgResult.error && cfgResult.data?.data) _applyConfig(cfgResult.data.data);
   } catch (e) { console.warn('[load appconfig]', e.message); }
 
   // 2. MEMBERS
+  // IMPORTANTE: _membersReady viene impostato qui — restoreSession() può ora
+  // validare ruoli e stato sospeso con dati affidabili da Supabase.
   try {
-    const { data, error } = await sb.from('members').select('*');
+    const { data, error } = membersResult;
     if (!error && data?.length) {
       data.forEach(dm => {
         const mapped = {
@@ -470,14 +511,14 @@ async function loadAllData() {
         else MEMBERS.push(mapped);
       });
     }
-    // Segna i membri come pronti subito dopo il load: restoreSession() può ora
-    // validare ruoli e stato sospeso con dati affidabili da Supabase.
-    _membersReady = true;
   } catch (e) { console.warn('[load members]', e.message); }
+  // Segna i membri come pronti: il flag viene impostato sempre, anche in caso
+  // di errore parziale, così restoreSession() non resta bloccata per sempre.
+  _membersReady = true;
 
   // 3. CALENDARIO
   try {
-    const { data, error } = await sb.from('calendario').select('*').order('data', { ascending: true });
+    const { data, error } = calendarioResult;
     if (!error && data?.length) {
       EVENTI = data.map(e => {
         const d   = new Date(e.data);
@@ -510,7 +551,7 @@ async function loadAllData() {
 
   // 4. SPESA
   try {
-    const { data, error } = await sb.from('spesa').select('*');
+    const { data, error } = spesaResult;
     if (!error && data?.length) {
       SPESA = data.map(s => ({
         id: s.id, nome: s.item, done: s.done || false,
@@ -525,7 +566,7 @@ async function loadAllData() {
 
   // 5. LAVORI
   try {
-    const { data, error } = await sb.from('lavori').select('*');
+    const { data, error } = lavoriResult;
     if (!error && data?.length) {
       LAVORI = data.map(l => ({ id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false }));
       const maxId = LAVORI.reduce((m, l) => Math.max(m, l.id), 0);
@@ -535,7 +576,7 @@ async function loadAllData() {
 
   // 6. MAGAZZINO (solo quantità)
   try {
-    const { data, error } = await sb.from('magazzino').select('*');
+    const { data, error } = magazzinoResult;
     if (!error && data?.length) {
       data.forEach(row => {
         const item = MAGAZZINO.find(m => m.id === row.item_id);
@@ -546,7 +587,7 @@ async function loadAllData() {
 
   // 7. PAGAMENTI
   try {
-    const { data, error } = await sb.from('pagamenti').select('*');
+    const { data, error } = pagamentiResult;
     if (!error && data?.length) {
       data.forEach(row => {
         let movimenti = [];
@@ -560,7 +601,7 @@ async function loadAllData() {
 
   // 8. CHAT (ultimi 200)
   try {
-    const { data, error } = await sb.from('chat').select('*').order('ts', { ascending: true }).limit(200);
+    const { data, error } = chatResult;
     if (!error && data?.length) {
       CHAT = data.map(c => {
         const d = new Date(c.ts);
@@ -578,7 +619,7 @@ async function loadAllData() {
 
   // 9. LOG (ultimi 500)
   try {
-    const { data, error } = await sb.from('log').select('*').order('ts', { ascending: false }).limit(500);
+    const { data, error } = logResult;
     if (!error && data?.length) {
       LOG = data.map(l => {
         const d = new Date(l.ts);
@@ -596,7 +637,7 @@ async function loadAllData() {
 
   // 10. SUGGERIMENTI
   try {
-    const { data, error } = await sb.from('suggerimenti').select('*').order('ts', { ascending: false });
+    const { data, error } = suggerimentiResult;
     if (!error && data?.length) {
       SUGGERIMENTI = data.map(s => ({
         id:     s.id,
@@ -609,7 +650,7 @@ async function loadAllData() {
 
   // 11. VALUTAZIONI
   try {
-    const { data, error } = await sb.from('valutazioni').select('*').order('ts', { ascending: false });
+    const { data, error } = valutazioniResult;
     if (!error && data?.length) {
       VALUTAZIONI = data.map(v => ({
         id:     v.id,
@@ -622,8 +663,6 @@ async function loadAllData() {
   } catch (e) { console.warn('[load valutazioni]', e.message); }
 
   // _sbReady = true garantisce che tutte le save-functions possano operare.
-  // Nota: _membersReady viene impostato subito dopo il load dei members (step 2),
-  // così restoreSession() può validare ruoli/sospeso anche se gli step successivi fallissero.
   _sbReady = true;
 }
 
