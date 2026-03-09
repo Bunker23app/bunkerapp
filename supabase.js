@@ -67,6 +67,8 @@ function saveConfig() {
       BACHECA: BACHECA,
       INFO: INFO,
       _nextIds: _nextIds,
+      // Articoli magazzino aggiunti dinamicamente (id >= 23)
+      MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
     };
     await _sbUpsert('appconfig', { id: 1, data: cfg });
   }, 800);
@@ -203,6 +205,11 @@ function saveMagazzino() {
           console.warn('[sb.magazzino] insert fallback:', res2.error.message);
           showToast('// ERRORE SALVATAGGIO MAGAZZINO: ' + res2.error.message, 'error');
         }
+      }
+      // Se ci sono articoli custom (id >= 23), persisti anche la loro definizione in appconfig
+      // cosi' gli altri client li ottengono al prossimo reload config via realtime
+      if (MAGAZZINO.some(function(m){ return m.id >= 23; })) {
+        saveConfig();
       }
     } catch(e) {
       console.warn('[sb.magazzino]', e.message);
@@ -369,6 +376,24 @@ function _applyConfig(cfg) {
     INFO = cfg.INFO;
     var maxIId = INFO.reduce(function(m,b){ return Math.max(m, b.id||0); }, 0);
     if (maxIId >= _nextIds.info) _nextIds.info = maxIId + 1;
+  }
+  // Articoli magazzino aggiunti dinamicamente
+  if (cfg.MAGAZZINO_EXTRA && cfg.MAGAZZINO_EXTRA.length) {
+    cfg.MAGAZZINO_EXTRA.forEach(function(extra) {
+      if (!MAGAZZINO.find(function(m){ return m.id === extra.id; })) {
+        MAGAZZINO.push(extra);
+      } else {
+        // Aggiorna la definizione (nome, categoria, minimo, ecc.) ma non la quantità attuale
+        var existing = MAGAZZINO.find(function(m){ return m.id === extra.id; });
+        existing.nome = extra.nome;
+        existing.categoria = extra.categoria;
+        existing.minimo = extra.minimo;
+        existing.unita = extra.unita;
+        existing.costoUnitario = extra.costoUnitario;
+      }
+    });
+    var maxMzId = cfg.MAGAZZINO_EXTRA.reduce(function(mx,m){ return Math.max(mx, m.id||0); }, 22);
+    if (maxMzId >= _nextIds.magazzino) _nextIds.magazzino = maxMzId + 1;
   }
 }
 
@@ -658,9 +683,20 @@ function initRealtime() {
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Log realtime OK'); });
 
   // ── MAGAZZINO realtime — INSERT / UPDATE / DELETE ─────────────────────────
-  function _reloadMagazzino() {
-    getSupabase().from('magazzino').select('*').then(function(res) {
+  // Ricarica quantita' dalla tabella magazzino e, se ci sono item_id sconosciuti,
+  // scarica anche l'appconfig per ottenere i nuovi articoli custom (MAGAZZINO_EXTRA).
+  function _reloadMagazzino(fetchConfig) {
+    var sb2 = getSupabase();
+    var tasks = [sb2.from('magazzino').select('*')];
+    if (fetchConfig) tasks.push(sb2.from('appconfig').select('data').eq('id', 1).single());
+    Promise.all(tasks).then(function(results) {
+      var res = results[0];
+      var cfgRes = results[1] || null;
       if (res.error) { console.warn('[sb.magazzino reload]', res.error.message); return; }
+      // Se abbiamo il config, applica prima i nuovi articoli extra
+      if (cfgRes && cfgRes.data && cfgRes.data.data) {
+        _applyConfig(cfgRes.data.data);
+      }
       if (res.data) res.data.forEach(function(r) {
         var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
         if (it) it.attuale = r.attuale;
@@ -674,27 +710,36 @@ function initRealtime() {
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
-      else { _reloadMagazzino(); }
+      // item_id sconosciuto = nuovo articolo custom: scarica config per avere la definizione completa
+      else { _reloadMagazzino(true); }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
       console.log('[DIAG][magazzino] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
       if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
-      else { _reloadMagazzino(); }
+      else { _reloadMagazzino(true); }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
       console.log('[DIAG][magazzino] DELETE ricevuto · payload.old:', JSON.stringify(payload.old));
       var old = payload.old;
       if (old && old.item_id) {
         // REPLICA IDENTITY FULL: old contiene item_id
-        var item = MAGAZZINO.find(function(m){ return m.id === old.item_id; });
-        if (item) item.attuale = 0;
+        var idx = MAGAZZINO.findIndex(function(m){ return m.id === old.item_id; });
+        if (idx >= 0) {
+          var item = MAGAZZINO[idx];
+          if (item.id >= 23) {
+            // Articolo custom: rimuovilo dall'array (era aggiunto dall'utente)
+            MAGAZZINO.splice(idx, 1);
+          } else {
+            item.attuale = 0;
+          }
+        }
         buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
       } else {
-        // Fallback: REPLICA IDENTITY non FULL — ricarica l'intera tabella
+        // Fallback: REPLICA IDENTITY non FULL — ricarica l'intera tabella + config
         console.warn('[magazzino] DELETE senza old.item_id — eseguire ALTER TABLE magazzino REPLICA IDENTITY FULL');
-        _reloadMagazzino();
+        _reloadMagazzino(true);
       }
     })
     .subscribe(function(status) { console.log('[DIAG][magazzino] subscribe status:', status); });

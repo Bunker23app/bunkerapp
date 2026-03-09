@@ -2604,6 +2604,7 @@ function syncMagazzinoWithSpesa() {
 
 function deleteMagazzino(i) {
   var item = MAGAZZINO[i];
+  var wasCustom = item.id >= 23;
   addLog('rimosso magazzino: ' + item.nome);
   // Rimuovi dalla spesa la voce automatica collegata tramite magazzinoId
   for (var j = SPESA.length - 1; j >= 0; j--) {
@@ -2614,6 +2615,9 @@ function deleteMagazzino(i) {
   MAGAZZINO.splice(i, 1);
   saveMagazzino();
   saveSpesa();
+  // Se era un articolo custom, aggiorna anche appconfig cosi' gli altri client
+  // non vedranno piu' l'articolo alla prossima sincronizzazione
+  if (wasCustom) saveConfig();
   buildMagazzino();
   buildSpesa();
 }
