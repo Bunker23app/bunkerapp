@@ -658,81 +658,77 @@ function initRealtime() {
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Log realtime OK'); });
 
   // ── MAGAZZINO realtime — INSERT / UPDATE / DELETE ─────────────────────────
+  function _reloadMagazzino() {
+    getSupabase().from('magazzino').select('*').then(function(res) {
+      if (res.error) { console.warn('[sb.magazzino reload]', res.error.message); return; }
+      if (res.data) res.data.forEach(function(r) {
+        var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
+        if (it) it.attuale = r.attuale;
+      });
+      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+    });
+  }
   _magazzinoChannel = sb.channel('magazzino-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'magazzino' }, function(payload) {
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; }
-      else {
-        getSupabase().from('magazzino').select('*').then(function(res) {
-          if (res.data) res.data.forEach(function(r) {
-            var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
-            if (it) it.attuale = r.attuale;
-          });
-          buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
-        });
-        return;
-      }
-      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+      if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
+      else { _reloadMagazzino(); }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; }
-      else {
-        getSupabase().from('magazzino').select('*').then(function(res) {
-          if (res.data) res.data.forEach(function(r) {
-            var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
-            if (it) it.attuale = r.attuale;
-          });
-          buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
-        });
-        return;
-      }
-      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+      if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
+      else { _reloadMagazzino(); }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
       var old = payload.old;
       if (old && old.item_id) {
+        // REPLICA IDENTITY FULL: old contiene item_id
         var item = MAGAZZINO.find(function(m){ return m.id === old.item_id; });
         if (item) item.attuale = 0;
+        buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+      } else {
+        // Fallback: REPLICA IDENTITY non FULL — ricarica l'intera tabella
+        console.warn('[magazzino] DELETE senza old.item_id — eseguire ALTER TABLE magazzino REPLICA IDENTITY FULL');
+        _reloadMagazzino();
       }
-      buildMagazzino(); updateDash();
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Magazzino realtime OK'); });
 
   // ── CALENDARIO realtime — INSERT / UPDATE / DELETE ────────────────────────
+  function _mapEventoRow(e) {
+    var d = new Date(e.data);
+    var obj = {
+      id: e.id, nome: e.titolo,
+      anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
+      ora: e.ora || '21:00', tipo: e.tipo || 'invito',
+      desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
+      locandina: e.locandina || null,
+      giornoFine: null, meseFine: null, annoFine: null,
+    };
+    if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
+    return obj;
+  }
+  function _reloadCalendario() {
+    console.warn('[calendario] DELETE senza old.id — eseguire ALTER TABLE calendario REPLICA IDENTITY FULL');
+    getSupabase().from('calendario').select('*').order('data', { ascending: true }).then(function(res) {
+      if (res.error) { console.warn('[sb.calendario reload]', res.error.message); return; }
+      if (res.data) EVENTI = res.data.map(_mapEventoRow);
+      buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
+    });
+  }
   _calendarioChannel = sb.channel('calendario-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calendario' }, function(payload) {
       var e = payload.new; if (!e) return;
       if (EVENTI.some(function(ev){ return ev.id === e.id; })) return;
-      var d = new Date(e.data);
-      var obj = {
-        id: e.id, nome: e.titolo,
-        anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
-        ora: e.ora || '21:00', tipo: e.tipo || 'invito',
-        desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
-        locandina: e.locandina || null,
-        giornoFine: null, meseFine: null, annoFine: null,
-      };
-      if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
-      EVENTI.push(obj);
+      EVENTI.push(_mapEventoRow(e));
       buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calendario' }, function(payload) {
       var e = payload.new; if (!e) return;
       var idx = EVENTI.findIndex(function(ev){ return ev.id === e.id; });
-      var d = new Date(e.data);
-      var obj = {
-        id: e.id, nome: e.titolo,
-        anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(),
-        ora: e.ora || '21:00', tipo: e.tipo || 'invito',
-        desc: e.descrizione || '', luogo: e.luogo || '', note: e.note || '',
-        locandina: e.locandina || null,
-        giornoFine: null, meseFine: null, annoFine: null,
-      };
-      if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
-      if (idx >= 0) EVENTI[idx] = obj; else EVENTI.push(obj);
+      if (idx >= 0) EVENTI[idx] = _mapEventoRow(e); else EVENTI.push(_mapEventoRow(e));
       buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, function(payload) {
@@ -742,35 +738,35 @@ function initRealtime() {
         if (idx >= 0) EVENTI.splice(idx, 1);
         buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
       } else {
-        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
-        getSupabase().from('calendario').select('*').order('data', { ascending: true }).then(function(res) {
-          if (res.data) {
-            EVENTI = res.data.map(function(e) {
-              var d = new Date(e.data);
-              var obj = { id: e.id, nome: e.titolo, anno: d.getUTCFullYear(), mese: d.getUTCMonth()+1, giorno: d.getUTCDate(), ora: e.ora||'21:00', tipo: e.tipo||'invito', desc: e.descrizione||'', luogo: e.luogo||'', note: e.note||'', locandina: e.locandina||null, giornoFine: null, meseFine: null, annoFine: null };
-              if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }
-              return obj;
-            });
-          }
-          buildCal(); buildSCal(); buildHomeNextEvent(); buildConsigliati(); updateDash();
-        });
+        // Fallback: REPLICA IDENTITY non FULL
+        _reloadCalendario();
       }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Calendario realtime OK'); });
 
   // ── SPESA realtime — INSERT / UPDATE / DELETE ─────────────────────────────
+  function _mapSpesaRow(s) {
+    return { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null };
+  }
+  function _reloadSpesa() {
+    console.warn('[spesa] DELETE senza old.id — eseguire ALTER TABLE spesa REPLICA IDENTITY FULL');
+    getSupabase().from('spesa').select('*').then(function(res) {
+      if (res.error) { console.warn('[sb.spesa reload]', res.error.message); return; }
+      if (res.data) SPESA = res.data.map(_mapSpesaRow);
+      buildSpesa(); updateDash();
+    });
+  }
   _spesaChannel = sb.channel('spesa-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spesa' }, function(payload) {
       var s = payload.new; if (!s) return;
       if (SPESA.some(function(x){ return x.id === s.id; })) return;
-      SPESA.push({ id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null });
+      SPESA.push(_mapSpesaRow(s));
       buildSpesa(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spesa' }, function(payload) {
       var s = payload.new; if (!s) return;
       var idx = SPESA.findIndex(function(x){ return x.id === s.id; });
-      var mapped = { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null };
-      if (idx >= 0) SPESA[idx] = mapped; else SPESA.push(mapped);
+      if (idx >= 0) SPESA[idx] = _mapSpesaRow(s); else SPESA.push(_mapSpesaRow(s));
       buildSpesa(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spesa' }, function(payload) {
@@ -780,33 +776,48 @@ function initRealtime() {
         if (idx >= 0) SPESA.splice(idx, 1);
         buildSpesa(); updateDash();
       } else {
-        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
-        getSupabase().from('spesa').select('*').then(function(res) {
-          if (res.data) SPESA = res.data.map(function(s){ return { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null }; });
-          buildSpesa(); updateDash();
-        });
+        // Fallback: REPLICA IDENTITY non FULL
+        _reloadSpesa();
       }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Spesa realtime OK'); });
 
   // ── PAGAMENTI realtime — INSERT / UPDATE / DELETE ────────────────────────
+  function _mapPagamentiRow(row) {
+    var movimenti = [];
+    try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+    return { name: row.member_name, saldo: row.saldo||0, movimenti: movimenti };
+  }
+  function _reloadPagamenti() {
+    console.warn('[pagamenti] DELETE senza old.member_name — eseguire ALTER TABLE pagamenti REPLICA IDENTITY FULL');
+    getSupabase().from('pagamenti').select('*').then(function(res) {
+      if (res.error) { console.warn('[sb.pagamenti reload]', res.error.message); return; }
+      if (res.data) {
+        res.data.forEach(function(row) {
+          var mapped = _mapPagamentiRow(row);
+          var existing = PAGAMENTI.find(function(p){ return p.name === mapped.name; });
+          if (existing) { existing.saldo = mapped.saldo; existing.movimenti = mapped.movimenti; }
+          else PAGAMENTI.push(mapped);
+        });
+      }
+      buildPagamenti(); updateDash();
+    });
+  }
   _pagamentiChannel = sb.channel('pagamenti-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pagamenti' }, function(payload) {
       var row = payload.new; if (!row) return;
-      var movimenti = [];
-      try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
-      var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
-      if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
-      else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
+      var mapped = _mapPagamentiRow(row);
+      var existing = PAGAMENTI.find(function(p){ return p.name === mapped.name; });
+      if (existing) { existing.saldo = mapped.saldo; existing.movimenti = mapped.movimenti; }
+      else PAGAMENTI.push(mapped);
       buildPagamenti(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pagamenti' }, function(payload) {
       var row = payload.new; if (!row) return;
-      var movimenti = [];
-      try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
-      var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
-      if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
-      else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
+      var mapped = _mapPagamentiRow(row);
+      var existing = PAGAMENTI.find(function(p){ return p.name === mapped.name; });
+      if (existing) { existing.saldo = mapped.saldo; existing.movimenti = mapped.movimenti; }
+      else PAGAMENTI.push(mapped);
       buildPagamenti(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pagamenti' }, function(payload) {
@@ -816,36 +827,35 @@ function initRealtime() {
         if (idx >= 0) PAGAMENTI.splice(idx, 1);
         buildPagamenti(); updateDash();
       } else {
-        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
-        getSupabase().from('pagamenti').select('*').then(function(res) {
-          if (res.data) {
-            res.data.forEach(function(row) {
-              var movimenti = [];
-              try { movimenti = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
-              var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
-              if (existing) { existing.saldo = row.saldo||0; existing.movimenti = movimenti; }
-              else { PAGAMENTI.push({ name: row.member_name, saldo: row.saldo||0, movimenti: movimenti }); }
-            });
-          }
-          buildPagamenti(); updateDash();
-        });
+        // Fallback: REPLICA IDENTITY non FULL
+        _reloadPagamenti();
       }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Pagamenti realtime OK'); });
 
   // ── LAVORI realtime — INSERT / UPDATE / DELETE ────────────────────────────
+  function _mapLavoroRow(l) {
+    return { id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false };
+  }
+  function _reloadLavori() {
+    console.warn('[lavori] DELETE senza old.id — eseguire ALTER TABLE lavori REPLICA IDENTITY FULL');
+    getSupabase().from('lavori').select('*').then(function(res) {
+      if (res.error) { console.warn('[sb.lavori reload]', res.error.message); return; }
+      if (res.data) LAVORI = res.data.map(_mapLavoroRow);
+      buildLavori(); updateDash();
+    });
+  }
   _lavoriChannel = sb.channel('lavori-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lavori' }, function(payload) {
       var l = payload.new; if (!l) return;
       if (LAVORI.some(function(x){ return x.id === l.id; })) return;
-      LAVORI.push({ id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false });
+      LAVORI.push(_mapLavoroRow(l));
       buildLavori(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lavori' }, function(payload) {
       var l = payload.new; if (!l) return;
       var idx = LAVORI.findIndex(function(x){ return x.id === l.id; });
-      var mapped = { id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false };
-      if (idx >= 0) LAVORI[idx] = mapped; else LAVORI.push(mapped);
+      if (idx >= 0) LAVORI[idx] = _mapLavoroRow(l); else LAVORI.push(_mapLavoroRow(l));
       buildLavori(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lavori' }, function(payload) {
@@ -855,11 +865,8 @@ function initRealtime() {
         if (idx >= 0) LAVORI.splice(idx, 1);
         buildLavori(); updateDash();
       } else {
-        // REPLICA IDENTITY non configurata — ricarica l'intera tabella
-        getSupabase().from('lavori').select('*').then(function(res) {
-          if (res.data) LAVORI = res.data.map(function(l){ return { id: l.id, lavoro: l.lavoro, who: l.who||'-', done: l.done||false }; });
-          buildLavori(); updateDash();
-        });
+        // Fallback: REPLICA IDENTITY non FULL
+        _reloadLavori();
       }
     })
     .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Lavori realtime OK'); });
