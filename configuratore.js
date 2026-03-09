@@ -1,15 +1,12 @@
 // ════════════════════════════════════════
-// CONFIGURATORE.JS
-// Gestione widget, sezioni, permessi pagine,
-// tab config, splash texts, guest message
+// CONFIGURATORE ADMIN
 // ════════════════════════════════════════
 
-// ── Dati configurazione widget & tab (admin) ──
 var WIDGET_CONFIG = [
   { id:'calendario', icon:'📅', label:'EVENTI',           enabled:true },
   { id:'spesa',      icon:'🛒', label:'LISTA SPESA',      enabled:true },
   { id:'lavori',     icon:'✓',  label:'LAVORI',           enabled:true },
-  { id:'magazzino',  icon:'📦', label:'MAGAZZINO',        enabled:true },
+  { id:'magazzino',   icon:'📦', label:'MAGAZZINO',         enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',        enabled:true },
   { id:'chat',       icon:'💬', label:'MESSAGGI',         enabled:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',          enabled:true },
@@ -21,7 +18,7 @@ var TAB_CONFIG = [
   { id:'calendario', icon:'📅', label:'CALENDARIO',  enabled:true },
   { id:'spesa',      icon:'🛒', label:'SPESA',        enabled:true },
   { id:'lavori',     icon:'✓',  label:'LAVORI',       enabled:true },
-  { id:'magazzino',  icon:'📦', label:'MAGAZZINO',    enabled:true },
+  { id:'magazzino',   icon:'📦', label:'MAGAZZINO',     enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',    enabled:true },
   { id:'chat',       icon:'💬', label:'CHAT',         enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',        enabled:true },
@@ -42,86 +39,6 @@ var GUEST_MESSAGE = {
   sub:  'Contatta gli amministratori',
 };
 
-// ── Dati configurazione widget & tab (aiutante) ──
-var AIUTANTE_WIDGET_CONFIG = [
-  { id:'calendario', icon:'📅', label:'EVENTI',      enabled:true },
-  { id:'spesa',      icon:'🛒', label:'LISTA SPESA', enabled:true },
-  { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
-  { id:'magazzino',  icon:'📦', label:'MAGAZZINO',   enabled:true },
-  { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
-  { id:'chat',       icon:'💬', label:'MESSAGGI',    enabled:true },
-  { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
-  { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
-];
-
-var AIUTANTE_TAB_CONFIG = [
-  { id:'calendario', icon:'📅', label:'CALENDARIO', enabled:true },
-  { id:'spesa',      icon:'🛒', label:'SPESA',       enabled:true },
-  { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
-  { id:'magazzino',  icon:'📦', label:'MAGAZZINO',   enabled:true },
-  { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
-  { id:'chat',       icon:'💬', label:'CHAT',        enabled:true },
-  { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
-  { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
-];
-
-// ── Struttura dati sezioni pagine pubbliche ──
-var PAGE_SECTIONS = {
-  home: [
-    { id:'cal',         icon:'📅', label:'CALENDARIO',          sublabel:'calendario eventi pubblico',                    enabled:true },
-    { id:'consigliati', icon:'⭐', label:'EVENTI CONSIGLIATI',  sublabel:'prossimo evento in evidenza',                   enabled:true },
-    { id:'nextEvent',   icon:'🔔', label:'PROSSIMO EVENTO',     sublabel:'banner prossimo evento',                        enabled:true },
-    { id:'search',      icon:'🔍', label:'CERCA EVENTI',        sublabel:'barra di ricerca pubblica',                     enabled:true },
-  ],
-  bacheca: [
-    { id:'posts',        icon:'📢', label:'COMUNICAZIONI',  sublabel:'post bacheca · tocca per gestire singoli',          enabled:true },
-    { id:'links',        icon:'🔗', label:'LINK UTILI',     sublabel:'link e risorse esterne',                            enabled:true },
-    { id:'valutazioni',  icon:'★',  label:'VALUTAZIONI',    sublabel:'form e lista valutazioni',                          enabled:true },
-    { id:'suggerimenti', icon:'💬', label:'SUGGERIMENTI',   sublabel:'form suggerimenti anonimi',                         enabled:true },
-  ],
-  info: [
-    { id:'cards', icon:'📋', label:'SCHEDE INFO', sublabel:'schede informative · tocca per gestire singole',             enabled:true },
-    { id:'links', icon:'🔗', label:'LINK UTILI',  sublabel:'link e risorse esterne',                                     enabled:true },
-  ],
-};
-
-// ── Permessi modifica pagine pubbliche ──
-var PAGE_EDIT_PERMS = {
-  home:    'admin',
-  bacheca: 'admin',
-  info:    'admin',
-};
-
-// ── Map section id → DOM element id per ogni pagina ──
-var PAGE_SECTION_ELS = {
-  home: {
-    nextEvent:   'homeSection_nextEvent',
-    cal:         'homeSection_cal',
-    search:      'homeSection_search',
-    consigliati: 'homeSection_consigliati',
-  },
-  bacheca: {
-    posts:        'bachecaSection_posts',
-    links:        'bachecaSection_links',
-    valutazioni:  'bachecaSection_valutazioni',
-    suggerimenti: 'bachecaSection_suggerimenti',
-  },
-  info: {
-    cards: 'infoSection_cards',
-    links: 'infoSection_links',
-  },
-};
-
-// ── Stato interno ──
-var _cfgDragSrc     = null;
-var _cfgPageCurrent = null;
-var _cfgPageDragSrc = null;
-var _cfgSubOpen     = null;
-
-// ════════════════════════════════════════
-// APPLY: Guest Message / Splash / Benvenuto
-// ════════════════════════════════════════
-
 function applyGuestMessage() {
   var tag  = document.getElementById('guestMsgTag');
   var main = document.getElementById('guestMsgMain');
@@ -137,17 +54,6 @@ function applySplashTexts() {
   if (b) b.textContent = SPLASH_TEXTS.badge   || 'LOVE IS A WORLD INSIDE THE MUSIC';
   if (t) t.textContent = SPLASH_TEXTS.tagline || 'Disco Storia     ·     Techno     ·     HardStyle';
 }
-
-function applyBenvenuto() {
-  var el = document.getElementById('staffBenvenutoMsg');
-  if (!el) return;
-  el.textContent = BENVENUTO_TEXT;
-  el.style.display = BENVENUTO_TEXT.trim() ? 'block' : 'none';
-}
-
-// ════════════════════════════════════════
-// SALVA: Splash / Guest / Configurazione
-// ════════════════════════════════════════
 
 function salvaSplashTexts() {
   var b = document.getElementById('cfgSplashBadge');
@@ -174,132 +80,29 @@ function salvaGuestMessage() {
   addLog('ha aggiornato il messaggio ospite');
 }
 
-function salvaConfigura() {
-  if (!isAdmin()) return;
-  applyWidgetConfig();
-  applyTabConfig();
-  BENVENUTO_TEXT = (document.getElementById('cfgBenvenuto') || {}).value || BENVENUTO_TEXT;
-  applyBenvenuto();
-  saveConfig();
-  showToast(T_CFG_SAVED, 'success');
-  addLog('ha aggiornato la configurazione staff');
-}
+var AIUTANTE_WIDGET_CONFIG = [
+  { id:'calendario', icon:'📅', label:'EVENTI',      enabled:true },
+  { id:'spesa',      icon:'🛒', label:'LISTA SPESA', enabled:true },
+  { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
+  { id:'magazzino',   icon:'📦', label:'MAGAZZINO',    enabled:true },
+  { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
+  { id:'chat',       icon:'💬', label:'MESSAGGI',    enabled:true },
+  { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
+  { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
+];
 
-function salvaConfiguraAiutante() {
-  if (!isAdmin()) return;
-  applyAiutanteConfig();
-  saveConfig();
-  showToast('// VISTA AIUTANTE SALVATA ✓', 'success');
-  addLog('ha aggiornato la configurazione aiutante');
-}
+var AIUTANTE_TAB_CONFIG = [
+  { id:'calendario', icon:'📅', label:'CALENDARIO', enabled:true },
+  { id:'spesa',      icon:'🛒', label:'SPESA',       enabled:true },
+  { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
+  { id:'magazzino',   icon:'📦', label:'MAGAZZINO',    enabled:true },
+  { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
+  { id:'chat',       icon:'💬', label:'CHAT',        enabled:true },
+  { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
+  { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
+];
 
-function salvaPermPagine() {
-  if (!isAdmin()) return;
-  updatePageCfgBtns();
-  saveConfig();
-  showToast('// PERMESSI SALVATI ✓', 'success');
-  addLog('ha aggiornato i permessi delle pagine pubbliche');
-}
-
-// ════════════════════════════════════════
-// APPLY: Widget / Tab Config
-// ════════════════════════════════════════
-
-function applyWidgetConfig() {
-  var role = currentUser ? currentUser.role : 'staff';
-  applyWidgetConfigForRole(role);
-}
-
-function applyWidgetConfigForRole(role) {
-  var config = (role === ROLES.AIUTANTE) ? AIUTANTE_WIDGET_CONFIG : WIDGET_CONFIG;
-  var grid = document.querySelector('#tab-dashboard .dash-grid');
-  if (!grid) return;
-
-  // Salva TUTTI i widget esistenti prima di rimuoverli
-  var existing = {};
-  grid.querySelectorAll('.dash-widget').forEach(function(el) {
-    var onclick = el.getAttribute('onclick') || '';
-    var m = onclick.match(/showTab\('([^']+)'\)/);
-    if (m) existing[m[1]] = el;
-  });
-  Array.from(grid.querySelectorAll('.dash-widget')).forEach(function(el) { el.remove(); });
-
-  // Rimetti i widget configurabili nell'ordine corretto
-  config.forEach(function(w) {
-    var el = existing[w.id];
-    if (!el) return;
-    if (!el.classList.contains('admin-only')) {
-      el.style.display = w.enabled ? '' : 'none';
-    }
-    grid.appendChild(el);
-  });
-
-  // Rimetti SEMPRE log e configura (admin-only)
-  ['log', 'configura'].forEach(function(id) {
-    var el = existing[id];
-    if (!el) el = document.querySelector('#tab-dashboard .dash-widget[onclick*="showTab(\'' + id + '\')"]');
-    if (el) {
-      el.style.removeProperty('display');
-      grid.appendChild(el);
-    }
-  });
-
-  applyWidgetLabels();
-}
-
-function applyWidgetLabels() {
-  WIDGET_CONFIG.forEach(function(w) {
-    var el = document.getElementById('wlabel-' + w.id);
-    if (el) el.textContent = w.label;
-  });
-}
-
-function syncWidgetTabEnabled(id, enabled) {
-  var w = WIDGET_CONFIG.find(function(x){ return x.id === id; });
-  if (w) w.enabled = enabled;
-  var t = TAB_CONFIG.find(function(x){ return x.id === id; });
-  if (t) t.enabled = enabled;
-}
-
-function syncAiutanteEnabled(id, enabled) {
-  var w = AIUTANTE_WIDGET_CONFIG.find(function(x){ return x.id === id; });
-  if (w) w.enabled = enabled;
-  var t = AIUTANTE_TAB_CONFIG.find(function(x){ return x.id === id; });
-  if (t) t.enabled = enabled;
-}
-
-function syncWidgetLabel(id, label) {
-  var aw = AIUTANTE_WIDGET_CONFIG.find(function(w){ return w.id === id; });
-  if (aw) aw.label = label;
-  var el = document.getElementById('wlabel-' + id);
-  if (el) el.textContent = label;
-}
-
-function applyTabConfig() {
-  var role = currentUser ? currentUser.role : 'staff';
-  applyTabConfigForRole(role);
-}
-
-function applyTabConfigForRole(role) {
-  var config = (role === ROLES.AIUTANTE) ? AIUTANTE_TAB_CONFIG : TAB_CONFIG;
-  config.forEach(function(t) {
-    var tabEl = document.getElementById('tab-' + t.id);
-    if (!tabEl) return;
-    tabEl.dataset.cfgDisabled = t.enabled ? '' : '1';
-  });
-}
-
-function applyAiutanteConfig() {
-  if (!currentUser) return;
-  var isAiut = currentUser.role === ROLES.AIUTANTE;
-  if (!isAiut) return;
-  applyWidgetConfigForRole('aiutante');
-  applyTabConfigForRole('aiutante');
-}
-
-// ════════════════════════════════════════
-// BUILD: Tab Configura (Admin)
-// ════════════════════════════════════════
+var _cfgDragSrc = null;
 
 function buildConfigura() {
   if (!isAdmin()) return;
@@ -401,10 +204,6 @@ function buildConfigura() {
   if (ppList) buildPermPagine(ppList);
 }
 
-// ════════════════════════════════════════
-// BUILD: Permessi Pagine
-// ════════════════════════════════════════
-
 function buildPermPagine(container) {
   container.innerHTML = '';
   var pages = [
@@ -432,9 +231,171 @@ function buildPermPagine(container) {
   });
 }
 
+function salvaPermPagine() {
+  if (!isAdmin()) return;
+  updatePageCfgBtns();
+  saveConfig();
+  showToast('// PERMESSI SALVATI ✓', 'success');
+  addLog('ha aggiornato i permessi delle pagine pubbliche');
+}
+
+function salvaConfigura() {
+  if (!isAdmin()) return;
+  applyWidgetConfig();
+  applyTabConfig();
+  BENVENUTO_TEXT = (document.getElementById('cfgBenvenuto') || {}).value || BENVENUTO_TEXT;
+  applyBenvenuto();
+  saveConfig();
+  showToast(T_CFG_SAVED, 'success');
+  addLog('ha aggiornato la configurazione staff');
+}
+
+function salvaConfiguraAiutante() {
+  if (!isAdmin()) return;
+  applyAiutanteConfig();
+  saveConfig();
+  showToast('// VISTA AIUTANTE SALVATA ✓', 'success');
+  addLog('ha aggiornato la configurazione aiutante');
+}
+
+function applyAiutanteConfig() {
+  if (!currentUser) return;
+  var isAiut = currentUser.role === ROLES.AIUTANTE;
+  // Applica solo se loggato come aiutante per vedere l'effetto live
+  if (!isAiut) return;
+  applyWidgetConfigForRole('aiutante');
+  applyTabConfigForRole('aiutante');
+}
+
+function applyWidgetConfig() {
+  var role = currentUser ? currentUser.role : 'staff';
+  applyWidgetConfigForRole(role);
+}
+
+function applyWidgetConfigForRole(role) {
+  var config = (role === ROLES.AIUTANTE) ? AIUTANTE_WIDGET_CONFIG : WIDGET_CONFIG;
+  var grid = document.querySelector('#tab-dashboard .dash-grid');
+  if (!grid) return;
+
+  // Salva TUTTI i widget esistenti prima di rimuoverli
+  var existing = {};
+  grid.querySelectorAll('.dash-widget').forEach(function(el) {
+    var onclick = el.getAttribute('onclick') || '';
+    var m = onclick.match(/showTab\('([^']+)'\)/);
+    if (m) existing[m[1]] = el;
+  });
+  Array.from(grid.querySelectorAll('.dash-widget')).forEach(function(el) { el.remove(); });
+
+  // Rimetti i widget configurabili nell'ordine corretto
+  config.forEach(function(w) {
+    var el = existing[w.id];
+    if (!el) return;
+    if (!el.classList.contains('admin-only')) {
+      el.style.display = w.enabled ? '' : 'none';
+    }
+    grid.appendChild(el);
+  });
+
+  // Rimetti SEMPRE log e configura (admin-only) — visibilità gestita da .is-admin CSS
+  ['log', 'configura'].forEach(function(id) {
+    var el = existing[id];
+    if (!el) el = document.querySelector('#tab-dashboard .dash-widget[onclick*="showTab(\'' + id + '\')"]');
+    if (el) {
+      el.style.removeProperty('display');
+      grid.appendChild(el); // sempre, parentNode è già null dopo remove
+    }
+  });
+
+  applyWidgetLabels();
+}
+
+// Aggiorna i label nel dashboard in base a WIDGET_CONFIG
+function applyWidgetLabels() {
+  WIDGET_CONFIG.forEach(function(w) {
+    var el = document.getElementById('wlabel-' + w.id);
+    if (el) el.textContent = w.label;
+  });
+}
+
+// Sincronizza abilitazione widget → anche tab corrispondente
+function syncWidgetTabEnabled(id, enabled) {
+  var w = WIDGET_CONFIG.find(function(x){ return x.id === id; });
+  if (w) w.enabled = enabled;
+  var t = TAB_CONFIG.find(function(x){ return x.id === id; });
+  if (t) t.enabled = enabled;
+}
+
+// Sincronizza abilitazione aiutante widget → anche tab aiutante
+function syncAiutanteEnabled(id, enabled) {
+  var w = AIUTANTE_WIDGET_CONFIG.find(function(x){ return x.id === id; });
+  if (w) w.enabled = enabled;
+  var t = AIUTANTE_TAB_CONFIG.find(function(x){ return x.id === id; });
+  if (t) t.enabled = enabled;
+}
+
+// Sincronizza il label di un widget sull'AIUTANTE_WIDGET_CONFIG (stessa label)
+function syncWidgetLabel(id, label) {
+  var aw = AIUTANTE_WIDGET_CONFIG.find(function(w){ return w.id === id; });
+  if (aw) aw.label = label;
+  var el = document.getElementById('wlabel-' + id);
+  if (el) el.textContent = label;
+}
+
+function applyTabConfig() {
+  var role = currentUser ? currentUser.role : 'staff';
+  applyTabConfigForRole(role);
+}
+
+function applyTabConfigForRole(role) {
+  var config = (role === ROLES.AIUTANTE) ? AIUTANTE_TAB_CONFIG : TAB_CONFIG;
+  config.forEach(function(t) {
+    var tabEl = document.getElementById('tab-' + t.id);
+    if (!tabEl) return;
+    tabEl.dataset.cfgDisabled = t.enabled ? '' : '1';
+  });
+}
+
+function applyBenvenuto() {
+  var el = document.getElementById('staffBenvenutoMsg');
+  if (!el) return;
+  el.textContent = BENVENUTO_TEXT;
+  el.style.display = BENVENUTO_TEXT.trim() ? 'block' : 'none';
+}
+
 // ════════════════════════════════════════
-// PERMESSI PAGINE PUBBLICHE
+// CONFIGURATORE PAGINE (Home / Bacheca / Info)
 // ════════════════════════════════════════
+
+// Struttura dati delle sezioni di ogni pagina
+var PAGE_SECTIONS = {
+  home: [
+    { id:'cal',         icon:'📅', label:'CALENDARIO',          sublabel:'calendario eventi pubblico',  enabled:true },
+    { id:'consigliati', icon:'⭐', label:'EVENTI CONSIGLIATI',  sublabel:'prossimo evento in evidenza',  enabled:true },
+    { id:'nextEvent',   icon:'🔔', label:'PROSSIMO EVENTO',     sublabel:'banner prossimo evento',       enabled:true },
+    { id:'search',      icon:'🔍', label:'CERCA EVENTI',        sublabel:'barra di ricerca pubblica',    enabled:true },
+  ],
+  bacheca: [
+    { id:'posts',       icon:'📢', label:'COMUNICAZIONI',       sublabel:'post bacheca · tocca per gestire singoli',  enabled:true },
+    { id:'links',       icon:'🔗', label:'LINK UTILI',          sublabel:'link e risorse esterne',       enabled:true },
+    { id:'valutazioni', icon:'★',  label:'VALUTAZIONI',         sublabel:'form e lista valutazioni',     enabled:true },
+    { id:'suggerimenti',icon:'💬', label:'SUGGERIMENTI',        sublabel:'form suggerimenti anonimi',    enabled:true },
+  ],
+  info: [
+    { id:'cards',       icon:'📋', label:'SCHEDE INFO',         sublabel:'schede informative · tocca per gestire singole', enabled:true },
+    { id:'links',       icon:'🔗', label:'LINK UTILI',          sublabel:'link e risorse esterne',       enabled:true },
+  ],
+};
+
+// Permessi: chi può modificare ogni pagina
+// Valori: 'admin' | 'staff' | 'aiutante'
+var PAGE_EDIT_PERMS = {
+  home:    'admin',
+  bacheca: 'admin',
+  info:    'admin',
+};
+
+var _cfgPageCurrent = null;
+var _cfgPageDragSrc = null;
 
 function canEditPage(page) {
   if (!currentUser) return false;
@@ -453,10 +414,6 @@ function updatePageCfgBtns() {
     else btn.classList.remove('visible');
   });
 }
-
-// ════════════════════════════════════════
-// CFG PANEL (Home / Bacheca / Info)
-// ════════════════════════════════════════
 
 function openCfgPanel(page) {
   if (!canEditPage(page)) return;
@@ -489,11 +446,13 @@ function buildCfgPanelBody(page) {
     var insertBefore = body.querySelector('.cfg-section-sep');
 
     sections.forEach(function(sec) {
+      // Main section row
       var row = document.createElement('div');
       row.className = 'cfg-item-row';
       row.draggable = true;
       row.dataset.id = sec.id;
 
+      // Expandable indicator for posts/cards
       var hasItems = (page === 'bacheca' && sec.id === 'posts') ||
                      (page === 'info'    && sec.id === 'cards');
       var expandBtn = hasItems
@@ -516,6 +475,7 @@ function buildCfgPanelBody(page) {
         saveConfig();
       });
 
+      // Drag
       row.addEventListener('dragstart', function(e) {
         _cfgPageDragSrc = this;
         this.classList.add('dragging');
@@ -551,9 +511,12 @@ function buildCfgPanelBody(page) {
   }
 
   renderRows();
+
+
 }
 
 // ── Sub-panel: gestione singoli item (bacheca posts / info cards) ──
+var _cfgSubOpen = null; // { page, secId }
 
 function toggleCfgSubPanel(page, secId, btn) {
   var body = document.getElementById('cfgPanelBody');
@@ -564,6 +527,7 @@ function toggleCfgSubPanel(page, secId, btn) {
     _cfgSubOpen = null;
     return;
   }
+  // Close any open sub-panel
   body.querySelectorAll('.cfg-sub-panel').forEach(function(p){ p.remove(); });
   body.querySelectorAll('.cfg-expand-btn').forEach(function(b){ b.textContent = '▶ ITEMS'; });
   _cfgSubOpen = { page: page, secId: secId };
@@ -611,6 +575,7 @@ function toggleCfgSubPanel(page, secId, btn) {
         row.querySelector('span:nth-child(2)').style.opacity = item.hidden ? '0.35' : '';
       });
 
+      // Drag for sub-rows
       row.addEventListener('dragstart', function(e) {
         _subDragSrc = this;
         this.style.opacity = '0.35';
@@ -642,6 +607,7 @@ function toggleCfgSubPanel(page, secId, btn) {
 
   renderSubRows();
 
+  // Insert after the parent section row
   var parentRow = body.querySelector('.cfg-item-row[data-id="' + secId + '"]');
   if (parentRow && parentRow.nextSibling) {
     body.insertBefore(panel, parentRow.nextSibling);
@@ -656,6 +622,7 @@ function salvaCfgPanel() {
   if (!_cfgPageCurrent) return;
   var page = _cfgPageCurrent;
   applyPageSections(page);
+  // Rebuild item lists so hidden/order changes are reflected immediately
   if (page === 'bacheca') buildBacheca();
   if (page === 'info')    buildInfo();
   saveConfig();
@@ -664,15 +631,31 @@ function salvaCfgPanel() {
   closeCfgPanel();
 }
 
-// ════════════════════════════════════════
-// APPLY: Sezioni Pagine Pubbliche
-// ════════════════════════════════════════
-
 function applyPageSections(page) {
   if (page === 'home')    applyHomeSections();
   if (page === 'bacheca') applyBachecaSections();
   if (page === 'info')    applyInfoSections();
 }
+
+// Map section id → DOM element id for each page
+var PAGE_SECTION_ELS = {
+  home: {
+    nextEvent:   'homeSection_nextEvent',
+    cal:         'homeSection_cal',
+    search:      'homeSection_search',
+    consigliati: 'homeSection_consigliati',
+  },
+  bacheca: {
+    posts:        'bachecaSection_posts',
+    links:        'bachecaSection_links',
+    valutazioni:  'bachecaSection_valutazioni',
+    suggerimenti: 'bachecaSection_suggerimenti',
+  },
+  info: {
+    cards: 'infoSection_cards',
+    links: 'infoSection_links',
+  },
+};
 
 function applyHomeSections() {
   var scrollable = document.querySelector('#screenHome .scrollable');
@@ -684,6 +667,7 @@ function applyHomeSections() {
     var el = document.getElementById(elId);
     if (el) el.style.display = sec.enabled ? '' : 'none';
   });
+  // Reorder DOM
   PAGE_SECTIONS.home.forEach(function(sec) {
     var elId = map[sec.id];
     if (!elId) return;
