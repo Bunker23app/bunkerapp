@@ -447,6 +447,8 @@ async function loadAllData() {
         if (existing) Object.assign(existing, mapped);
         else MEMBERS.push(mapped);
       });
+      // I MEMBERS sono ora aggiornati da Supabase: restoreSession() può girare in modo sicuro.
+      _membersReady = true;
     }
   } catch (e) { console.warn('[load members]', e.message); }
 

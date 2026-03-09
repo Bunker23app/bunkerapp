@@ -23,8 +23,11 @@ const ROLE_LEVEL = {
 };
 
 // ── STATO AUTH ───────────────────────────────────────────────────
-let currentUser = null;   // { name, initial, color, role, photo, sospeso } oppure null
-let guestMode   = false;  // true = accesso ospite (solo calendario pubblico)
+let currentUser    = null;   // { name, initial, color, role, photo, sospeso } oppure null
+let guestMode      = false;  // true = accesso ospite (solo calendario pubblico)
+// Flag impostato a true solo dopo che loadAllData() ha aggiornato MEMBERS da Supabase.
+// Impedisce che restoreSession() venga eseguita prima che i dati siano attendibili.
+let _membersReady  = false;
 
 // ── SESSION STORAGE KEY ──────────────────────────────────────────
 const SESSION_KEY  = 'bunker23_session';
@@ -396,7 +399,14 @@ function doLogout() {
 }
 
 // ── Ripristino sessione al boot ──────────────────────────────────
+// NOTA: restoreSession() deve essere chiamata SOLO dopo che loadAllData()
+// è completata con successo, così i MEMBERS sono aggiornati da Supabase
+// e il controllo del ruolo e dello stato sospeso è affidabile.
 function restoreSession() {
+  // Blocco di sicurezza: se loadAllData() non è ancora completata con successo,
+  // i MEMBERS potrebbero essere solo il seed locale. Non ripristinare la sessione.
+  if (!_membersReady) { console.warn('[restoreSession] MEMBERS non ancora pronti — skip'); return false; }
+
   const sess = _readSession();
   if (!sess) return false;
 
@@ -408,6 +418,9 @@ function restoreSession() {
   // Questo evita che un vecchio token admin riattivi una sessione privilegiata
   // se il ruolo è stato cambiato o se il role in storage è corrotto.
   if (sess.role !== member.role) { _clearSession(); return false; }
+
+  // Blocca il ripristino se l'account è stato sospeso nel frattempo
+  if (member.sospeso) { _clearSession(); return false; }
 
   const elapsed = Date.now() - (sess.ts ?? 0);
   const ttl     = getSessionTTL(member.role);
