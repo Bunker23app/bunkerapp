@@ -1069,9 +1069,13 @@ function buildEventoInCorsoBanner() {
   var banner = document.getElementById('eventoInCorsoBanner');
   if (!banner) return;
 
-  // Cerca il primo evento in corso usando la funzione globale condivisa con buildHomeNextEvent
+  // Filtra per ruolo utente — identica logica di buildCal() / tipiVisibiliPerRole()
+  var tipi = tipiVisibiliPerRole(currentUser ? currentUser.role : null);
+
+  // Cerca il primo evento in corso visibile per il ruolo corrente
   var evInCorso = null;
   for (var i = 0; i < EVENTI.length; i++) {
+    if (tipi.indexOf(EVENTI[i].tipo) < 0) continue;
     if (isEventoInCorso(EVENTI[i])) { evInCorso = EVENTI[i]; break; }
   }
 
