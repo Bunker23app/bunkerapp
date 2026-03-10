@@ -969,7 +969,13 @@ function isEventoInCorso(e) {
   // Oggi deve essere compreso tra data inizio e data fine
   if (todayDate < startDate || todayDate > endDate) return false;
 
-  // Controlla ora
+  // Condizione aggiuntiva: se terminato=false e la data è oggi → sempre in corso
+  // (copre il caso in cui l'evento non ha ora_fine o l'ora non è ancora arrivata)
+  if (todayDate.getTime() === startDate.getTime()) {
+    return true;
+  }
+
+  // Controlla ora (solo se oggi è nel range multi-giorno ma non il giorno di inizio)
   var oraParts = (e.ora || '').split(':');
   var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
 
@@ -980,10 +986,6 @@ function isEventoInCorso(e) {
     if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60;
     var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
     return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
-  }
-  // Nessuna ora fine: in corso dalla ora inizio fino a fine giornata (stesso giorno)
-  if (todayDate.getTime() === startDate.getTime()) {
-    return nowMinutes >= oraInizioMin;
   }
   // Giorni intermedi di un evento multi-giorno senza ora fine: considerato in corso
   return true;
