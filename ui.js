@@ -3892,12 +3892,15 @@ window.addEventListener('popstate', function(e) {
   if (activeId === 'screenStaff') {
     if (_currentTab !== 'dashboard') {
       // Da qualsiasi widget → torna alla dashboard
+      // Pusha uno stato esplicito per la dashboard, così il prossimo
+      // "indietro" avrà sempre un livello disponibile per tornare alla home pubblica
       showTab('dashboard');
+      history.pushState({ screen: 'screenStaff', tab: 'dashboard' }, '', '');
     } else {
-      // Dalla dashboard → stessa funzione del pulsante "← PUBBLICA"
+      // Dalla dashboard → torna alla home pubblica
       navigate('screenHome', true);
+      history.pushState({}, '', '');
     }
-    history.pushState({}, '', '');
     return;
   }
 
