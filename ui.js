@@ -164,6 +164,17 @@ function isUtente()   { return !!currentUser && (currentUser.role === ROLES.UTEN
 function canEdit()     { return isStaff(); }
 function canEditSpesa(){ return !!currentUser; }
 
+function _checkPerm(perm) {
+  if (!currentUser) return false;
+  if (perm === ROLES.ADMIN)    return isAdmin();
+  if (perm === ROLES.STAFF)    return isStaff();
+  if (perm === ROLES.AIUTANTE) return isAiutante();
+  return false;
+}
+function canViewContatori()  { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_view  : ROLES.STAFF); }
+function canResetContatori() { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_reset : ROLES.STAFF); }
+function canAddUser()        { return _checkPerm(typeof ADD_USER_PERM !== 'undefined' ? ADD_USER_PERM : ROLES.ADMIN); }
+
 // ════════════════════════════════════════
 // CONSOLIDATED UTILITIES
 // ════════════════════════════════════════
@@ -596,6 +607,8 @@ var _currentTab = 'dashboard';
 function showTab(name) {
   // Protezione: configura solo per admin
   if (name === 'configura' && !isAdmin()) return;
+  // Protezione: contatori solo se permesso
+  if (name === 'contatori' && !canViewContatori()) return;
   TABS.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = 'none';
@@ -3080,6 +3093,10 @@ function buildMembriList() {
   if (!list) return;
   list.innerHTML = '';
 
+  // Mostra/nascondi il pulsante "Nuovo membro" in base al permesso configurato
+  var btnNM = document.getElementById('btnNuovoMembro');
+  if (btnNM) btnNM.style.display = canAddUser() ? '' : 'none';
+
   var groups = [
     { role: 'utente',   title: 'LV.1 · UTENTI' },
     { role: 'premium',  title: 'LV.2 · PREMIUM' },
@@ -3156,7 +3173,7 @@ async function cambiaPassword() {
 var COLORS = ['#cc2200','#1a6b3c','#1a3a7a','#6b1a6b','#7a4a1a','#2a6b6b','#5a5a1a','#4a2a6b','#6b4a2a','#1a5a5a'];
 
 function openNuovoMembroModal() {
-  if (currentUser && currentUser.role !== ROLES.ADMIN) return;
+  if (!canAddUser()) { showToast('// PERMESSO NEGATO', 'error'); return; }
   $id('modalTitle').textContent = 'NUOVO MEMBRO';
   $id('modalBody').innerHTML =
     '<div><label class="modal-label">// NOME</label>' +
@@ -4020,7 +4037,7 @@ function buildContatori() {
         '<span id="cnt-cons-' + item.id + '" style="font-family:var(--mono);font-size:13px;font-weight:bold;color:#cc2200;min-width:24px;text-align:center">' + (cnt.consumato || 0) + '</span>' +
         '<button onclick="stepContatore(' + item.id + ',\'consumato\',1)" style="width:22px;height:22px;border-radius:3px;border:1px solid #333;background:#1a1a1a;color:#aaa;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0">+</button>' +
       '</div>' +
-      '<button onclick="resetContatore(' + item.id + ')" style="height:22px;padding:0 8px;border-radius:3px;border:1px solid #333;background:transparent;color:#555;font-family:var(--mono);font-size:8px;letter-spacing:1px;cursor:pointer;white-space:nowrap;flex-shrink:0">↺ RESET</button>';
+      (canResetContatori() ? '<button onclick="resetContatore(' + item.id + ')" style="height:22px;padding:0 8px;border-radius:3px;border:1px solid #333;background:transparent;color:#555;font-family:var(--mono);font-size:8px;letter-spacing:1px;cursor:pointer;white-space:nowrap;flex-shrink:0">↺ RESET</button>' : '');
     list.appendChild(row);
   });
 
@@ -4053,6 +4070,7 @@ function stepContatore(itemId, tipo, delta) {
 }
 
 function resetContatore(itemId) {
+  if (!canResetContatori()) { showToast('// PERMESSO NEGATO', 'error'); return; }
   var item = MAGAZZINO.find(function(m){ return m.id === itemId; });
   var nome = item ? item.nome : 'articolo';
   showConfirm('Azzerare i contatori di "' + nome + '"?', function() {

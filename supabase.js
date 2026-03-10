@@ -57,6 +57,8 @@ function saveConfig() {
       AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
       PAGE_SECTIONS: PAGE_SECTIONS,
       PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
+      WIDGET_PERMS: WIDGET_PERMS,
+      ADD_USER_PERM: ADD_USER_PERM,
       GUEST_MESSAGE: GUEST_MESSAGE,
       SPLASH_TEXTS: SPLASH_TEXTS,
       LINKS_PAGE: LINKS_PAGE,
@@ -278,6 +280,8 @@ function saveMagazzino() {
           AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
           PAGE_SECTIONS: PAGE_SECTIONS,
           PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
+          WIDGET_PERMS: WIDGET_PERMS,
+          ADD_USER_PERM: ADD_USER_PERM,
           GUEST_MESSAGE: GUEST_MESSAGE,
           SPLASH_TEXTS: SPLASH_TEXTS,
           LINKS_PAGE: LINKS_PAGE,
@@ -466,6 +470,8 @@ function _applyConfig(cfg) {
     });
   }
   if (cfg.PAGE_EDIT_PERMS) Object.assign(PAGE_EDIT_PERMS, cfg.PAGE_EDIT_PERMS);
+  if (cfg.WIDGET_PERMS)    Object.assign(WIDGET_PERMS, cfg.WIDGET_PERMS);
+  if (typeof cfg.ADD_USER_PERM === 'string') ADD_USER_PERM = cfg.ADD_USER_PERM;
   if (cfg.GUEST_MESSAGE)   Object.assign(GUEST_MESSAGE, cfg.GUEST_MESSAGE);
   if (cfg.SPLASH_TEXTS)    Object.assign(SPLASH_TEXTS, cfg.SPLASH_TEXTS);
   if (cfg.LINKS_PAGE)      Object.assign(LINKS_PAGE, cfg.LINKS_PAGE);
