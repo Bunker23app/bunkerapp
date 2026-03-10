@@ -147,7 +147,7 @@ body::before {
   background-size:130%;
   opacity:0.04;
 }
-.screen > *:not(.logo-bg):not(.bottom-nav) { position:relative; z-index:1; }
+.screen > *:not(.logo-bg) { position:relative; z-index:1; }
 
 /* ── CERCA ── */
 .cerca-filter-btn {
@@ -170,7 +170,7 @@ body::before {
   width:100%;
   min-height:100vh;
   background:var(--dark);
-  overflow:hidden;
+  overflow:visible;
   position:relative;
 }
 
@@ -286,7 +286,7 @@ body::before {
 .scrollable {
   flex:1; overflow-y:auto; overflow-x:hidden;
   scrollbar-width:thin; scrollbar-color:#222 transparent;
-  padding-bottom:calc(64px + env(safe-area-inset-bottom, 0px));
+  padding-bottom:calc(60px + env(safe-area-inset-bottom, 0px));
 }
 .scrollable::-webkit-scrollbar { width:3px; }
 .scrollable::-webkit-scrollbar-thumb { background:#222; border-radius:2px; }
@@ -739,7 +739,9 @@ body::before {
   background:transparent; border:1px solid; border-radius:2px;
   font-family:var(--mono); font-size:8px; letter-spacing:2px;
   padding:6px 12px; cursor:pointer; transition:border-color 0.2s, color 0.2s; margin-top:8px; margin-right:6px;
+  color:var(--steel); border-color:#444;
 }
+.cal-action-btn:hover { color:var(--light); border-color:#888; }
 
 /* ── BACHECA ── */
 .pub-content { padding:12px; display:flex; flex-direction:column; gap:8px; }

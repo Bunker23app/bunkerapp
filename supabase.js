@@ -508,16 +508,28 @@ async function loadAllData() {
     var spRes = batch2[1];
     if (spRes.data && spRes.data.length) {
       SPESA = spRes.data.map(function(s) {
-        var mzItem = (s.from_magazzino && s.magazzino_id)
-          ? MAGAZZINO.find(function(m){ return m.id === s.magazzino_id; })
-          : null;
-        return {
+        var obj = {
           id: s.id, nome: s.item, done: s.done || false,
           qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
           unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
           magazzinoId: s.magazzino_id || null,
-          _categoria: mzItem ? mzItem.categoria : undefined,
+          qtyNum: 0, _categoria: null,
         };
+        // Ricostruisci qtyNum da qty (es. "5 bottiglie" → 5)
+        if (obj.qty) {
+          var parsed = parseFloat(obj.qty);
+          if (!isNaN(parsed)) obj.qtyNum = parsed;
+        }
+        // Ricostruisci _categoria e unita da MAGAZZINO se è una voce automatica
+        if (obj.fromMagazzino && obj.magazzinoId) {
+          var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; });
+          if (mz) {
+            obj._categoria    = mz.categoria;
+            obj.costoUnitario = mz.costoUnitario;
+            obj.unita         = mz.unita;
+          }
+        }
+        return obj;
       });
       var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
       if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
@@ -840,10 +852,7 @@ function initRealtime() {
 
   // ── SPESA realtime — INSERT / UPDATE / DELETE ─────────────────────────────
   function _mapSpesaRow(s) {
-    var mzItem = (s.from_magazzino && s.magazzino_id)
-      ? MAGAZZINO.find(function(m){ return m.id === s.magazzino_id; })
-      : null;
-    return { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null, _categoria: mzItem ? mzItem.categoria : undefined };
+    return { id: s.id, nome: s.item, done: s.done||false, qty: s.qty||'', costoUnitario: s.costo_unitario||0, unita: s.unita||'', fromMagazzino: s.from_magazzino||false, magazzinoId: s.magazzino_id||null };
   }
   function _reloadSpesa() {
     console.warn('[spesa] DELETE senza old.id — eseguire ALTER TABLE spesa REPLICA IDENTITY FULL');
