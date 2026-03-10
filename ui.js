@@ -963,9 +963,22 @@ function buildHomeNextEvent() {
 
   var today = new Date(); today.setHours(0,0,0,0);
 
-  // Solo eventi su invito futuri
+  // Solo eventi su invito futuri — escludi quelli attualmente in corso
+  var now = new Date();
   var next = EVENTI
-    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today; })
+    .filter(function(e) {
+      var evDate = new Date(e.anno, e.mese-1, e.giorno);
+      if (evDate < today) return false;                          // passati: escludi
+      if (e.tipo !== 'invito') return false;
+      // Controlla se l'evento è in corso in questo momento
+      var oraParts = (e.ora || '00:00').split(':');
+      var evStart = new Date(e.anno, e.mese-1, e.giorno, parseInt(oraParts[0])||0, parseInt(oraParts[1])||0, 0, 0);
+      // Durata standard: 6 ore (puoi modificare il valore)
+      var durataMs = 6 * 60 * 60 * 1000;
+      var evEnd = new Date(evStart.getTime() + durataMs);
+      if (now >= evStart && now < evEnd) return false;           // in corso: escludi
+      return true;
+    })
     .sort(function(a,b) { return new Date(a.anno,a.mese-1,a.giorno) - new Date(b.anno,b.mese-1,b.giorno); })[0];
 
   if (!next) { el.innerHTML = ''; return; }
@@ -3153,6 +3166,11 @@ function openEditMembroModal(i) {
     '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
     '<input type="checkbox" id="mSospeso"' + (m.sospeso ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
     '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.sospeso ? '#cc2200' : '#888') + '">ACCOUNT SOSPESO</span>' +
+    '</label></div>' +
+    '<div style="margin-top:8px;padding:10px;border:1px solid ' + (m.canCreateProfile ? 'rgba(0,229,255,0.3)' : '#333') + ';border-radius:3px;background:' + (m.canCreateProfile ? 'rgba(0,229,255,0.05)' : 'transparent') + '">' +
+    '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
+    '<input type="checkbox" id="mCanCreateProfile"' + (m.canCreateProfile ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
+    '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.canCreateProfile ? 'var(--cyan)' : '#888') + '">PUÒ CREARE NUOVI PROFILI</span>' +
     '</label></div>';
 
   // Attiva bottoni foto membro
@@ -3202,10 +3220,12 @@ function openEditMembroModal(i) {
     var pw      = document.getElementById('mPwAcc').value.trim();
     var ruolo   = document.getElementById('mRuoloAcc').value;
     var sospeso = document.getElementById('mSospeso').checked;
+    var canCreateProfile = document.getElementById('mCanCreateProfile').checked;
     MEMBERS[i].name    = nome;
     MEMBERS[i].initial = nome.charAt(0).toUpperCase();
     MEMBERS[i].role    = ruolo;
     MEMBERS[i].sospeso = sospeso;
+    MEMBERS[i].canCreateProfile = canCreateProfile;
     if (pw) sha256(pw).then(function(h){ MEMBERS[i].password = h; saveMembers(); });
     addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : ''));
     saveMembers();

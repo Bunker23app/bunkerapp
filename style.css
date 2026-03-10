@@ -194,8 +194,8 @@ body::before {
   transform:translateX(0);
   pointer-events:auto;
   position:relative;
-  /* spazio per la barra di navigazione fissa in fondo */
-  padding-bottom:calc(54px + env(safe-area-inset-bottom, 0px));
+  /* spazio per la barra di navigazione fissa in fondo — altezza nav (~54px) + safe area */
+  padding-bottom:calc(64px + env(safe-area-inset-bottom, 0px));
 }
 .screen.slide-out {
   opacity:0;
@@ -297,12 +297,12 @@ body::before {
   display:flex;
   flex-shrink:0;
   box-shadow:0 -1px 20px rgba(0,229,255,0.05);
-  /* sempre fissa in fondo allo schermo */
-  position:fixed;
-  bottom:0;
+  /* SEMPRE fissa in fondo allo schermo, indipendente dallo scroll */
+  position:fixed !important;
+  bottom:0 !important;
   left:0;
   right:0;
-  z-index:100;
+  z-index:200;
   /* safe area per dispositivi con notch/gesture bar */
   padding-bottom:env(safe-area-inset-bottom, 0px);
 }
@@ -519,12 +519,12 @@ body::before {
 .nec-meta  { font-family:var(--mono); font-size:9px; color:var(--steel); letter-spacing:1px; }
 .nec-edit-btn {
   position:absolute; top:10px; right:10px;
-  background:transparent; border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.3);
+  background:rgba(0,229,255,0.07); border:1px solid rgba(0,229,255,0.3); color:var(--cyan);
   font-family:var(--mono); font-size:8px; padding:3px 8px;
-  cursor:pointer; border-radius:2px; transition:border-color 0.2s, color 0.2s; display:none;
+  cursor:pointer; border-radius:2px; transition:border-color 0.2s, color 0.2s, background 0.2s; display:none;
 }
 .nec-edit-btn.visible { display:block; }
-.nec-edit-btn:hover { border-color:rgba(255,255,255,0.5); color:white; }
+.nec-edit-btn:hover { background:rgba(0,229,255,0.15); border-color:var(--cyan); color:var(--white); box-shadow:0 0 8px rgba(0,229,255,0.2); }
 
 /* ── LIGHTBOX ── */
 .lightbox {
@@ -755,13 +755,13 @@ body::before {
 .bacheca-text  { font-family:var(--body); font-size:13px; color:var(--light); line-height:1.5; }
 .bacheca-img   { width:100%; border-radius:3px; margin-top:8px; max-height:160px; object-fit:cover; }
 .edit-btn-small {
-  background:transparent; border:1px solid #2a2a2a; color:#444;
+  background:rgba(0,229,255,0.07); border:1px solid rgba(0,229,255,0.3); color:var(--cyan);
   font-family:var(--mono); font-size:8px; letter-spacing:1px;
   padding:3px 8px; cursor:pointer; border-radius:2px;
-  transition:border-color 0.2s, color 0.2s; flex-shrink:0; display:none;
+  transition:border-color 0.2s, color 0.2s, background 0.2s; flex-shrink:0; display:none;
 }
 .edit-btn-small.visible { display:block; }
-.edit-btn-small:hover { border-color:#888; color:var(--light); }
+.edit-btn-small:hover { background:rgba(0,229,255,0.15); border-color:var(--cyan); color:var(--white); box-shadow:0 0 8px rgba(0,229,255,0.2); }
 
 /* ── ISTRUZIONI ── */
 .istr-card { border:1px solid var(--border); border-radius:3px; overflow:hidden; margin-bottom:6px; }
