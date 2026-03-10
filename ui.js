@@ -488,6 +488,14 @@ function goToLogin() {
   navigate('screenLogin');
 }
 
+function exitToSplash() {
+  guestMode = false;
+  currentUser = null;
+  document.getElementById('loginPw').value = '';
+  document.getElementById('loginErr').textContent = '';
+  navigate('screenSplash');
+}
+
 // Timeout sessione — 30 minuti di inattività
 var _sessionTimer = null;
 var SESSION_TIMEOUT = 30 * 60 * 1000; // 30 min
@@ -3749,8 +3757,8 @@ window.addEventListener('popstate', function(e) {
       history.pushState({ screen: 'screenStaff', tab: 'dashboard' }, '', '');
     } else {
       // Dalla dashboard → torna alla home pubblica
+      guestMode = false;
       navigate('screenHome', true);
-      history.pushState({}, '', '');
     }
     return;
   }
