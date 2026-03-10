@@ -477,7 +477,9 @@ hr, .divider {
   transform: translateX(0);
   pointer-events: auto;
   position: relative;
-  padding-bottom: calc(54px + env(safe-area-inset-bottom, 0px));
+  height: 100vh;
+  overflow: hidden;
+  padding-bottom: 0;
 }
 .screen.slide-out {
   opacity: 0;
