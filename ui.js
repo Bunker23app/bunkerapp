@@ -654,6 +654,11 @@ function showTab(name) {
   if (name === 'contatori') {
     buildContatori();
   }
+  // Aggiunge uno stato history per gestire il tasto indietro del telefono
+  // (non farlo per la dashboard che viene già gestita da navigate)
+  if (name !== 'dashboard') {
+    history.pushState({ screen: 'screenStaff', tab: name }, '', '');
+  }
   _currentTab = name;
 }
 
@@ -985,16 +990,12 @@ function isEventoInCorso(e) {
   // Oggi deve essere compreso tra data inizio e data fine
   if (todayDate < startDate || todayDate > endDate) return false;
 
-  // Condizione aggiuntiva: se terminato=false e la data è oggi → sempre in corso
-  // (copre il caso in cui l'evento non ha ora_fine o l'ora non è ancora arrivata)
-  if (todayDate.getTime() === startDate.getTime()) {
-    return true;
-  }
-
-  // Controlla ora (solo se oggi è nel range multi-giorno ma non il giorno di inizio)
+  // Calcola ora inizio in minuti
   var oraParts = (e.ora || '').split(':');
   var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
 
+  // Se c'è ora_fine, controlla che l'ora attuale sia compresa tra ora_inizio e ora_fine
+  // Questa verifica vale sia per il giorno di inizio che per i giorni intermedi
   if (e.ora_fine) {
     var oraFineParts = e.ora_fine.split(':');
     var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
@@ -1003,7 +1004,8 @@ function isEventoInCorso(e) {
     var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
     return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
   }
-  // Giorni intermedi di un evento multi-giorno senza ora fine: considerato in corso
+
+  // Nessuna ora_fine: se è il giorno di inizio o un giorno intermedio → in corso
   return true;
 }
 
