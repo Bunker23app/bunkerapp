@@ -452,7 +452,7 @@ hr, .divider {
   width: 100%;
   min-height: 100vh;
   background: transparent;
-  overflow-x: hidden;
+  overflow-x: visible;
   position: relative;
 }
 
@@ -469,7 +469,7 @@ hr, .divider {
   transform: translateX(30px);
   transition: opacity 0.22s ease, transform 0.22s ease;
   pointer-events: none;
-  overflow-x: hidden;
+  overflow-x: visible;
 }
 .screen.active {
   display: flex;
@@ -1998,12 +1998,15 @@ html, body {
   overflow-x: visible;
   max-width: 100vw;
 }
-.phone, .screen, .scrollable,
+.scrollable,
 .modal-box, .cfg-panel,
 [class*="-card"], .card,
 .topbar, .bottom-nav {
   max-width: 100vw;
   overflow-x: hidden;
+}
+.phone, .screen {
+  max-width: 100vw;
 }
 img, video, canvas, iframe {
   max-width: 100%;
