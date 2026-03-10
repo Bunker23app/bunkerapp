@@ -363,6 +363,26 @@ function saveValutazioni() {
   }, 600);
 }
 
+// CONTATORI — upsert per magazzino_id
+function saveContatori() {
+  _debounce('contatori', async function() {
+    if (!_sbReady) return;
+    try {
+      var sb = getSupabase();
+      var rows = Object.keys(CONTATORI).map(function(id) {
+        return {
+          magazzino_id: parseInt(id),
+          acquistato:   CONTATORI[id].acquistato || 0,
+          consumato:    CONTATORI[id].consumato  || 0,
+        };
+      }).filter(function(r){ return r.magazzino_id > 0; });
+      if (!rows.length) return;
+      var res = await sb.from('contatori').upsert(rows, { onConflict: 'magazzino_id' });
+      if (res.error) console.warn('[sb.contatori]', res.error.message);
+    } catch(e) { console.warn('[sb.contatori]', e.message); }
+  }, 600);
+}
+
 // CHAT — inserimento singolo messaggio (realtime nativo)
 async function saveChatMessage(msg) {
   if (!_sbReady) return;
@@ -534,6 +554,7 @@ async function loadAllData() {
     sb.from('log').select('*').order('ts', { ascending: false }).limit(500), // 6
     sb.from('suggerimenti').select('*').order('ts', { ascending: false }),   // 7
     sb.from('valutazioni').select('*').order('ts', { ascending: false }),    // 8
+    sb.from('contatori').select('*'),                                        // 9
   ]);
 
   // 3. CALENDARIO
@@ -689,6 +710,20 @@ async function loadAllData() {
       });
     }
   } catch(e) { console.warn('[load valutazioni]', e.message); }
+
+  // 12. CONTATORI
+  try {
+    var cntRes = batch2[9];
+    if (cntRes.data && cntRes.data.length) {
+      CONTATORI = {};
+      cntRes.data.forEach(function(row) {
+        CONTATORI[row.magazzino_id] = {
+          acquistato: row.acquistato || 0,
+          consumato:  row.consumato  || 0,
+        };
+      });
+    }
+  } catch(e) { console.warn('[load contatori]', e.message); }
 
   // Migrazione da appstate: non più necessaria, gestita via SQL fix_primary_keys.sql
 }
@@ -1226,6 +1261,7 @@ function saveToStorage() {
   savePagamenti();
   saveSuggerimenti();
   saveValutazioni();
+  saveContatori();
 }
 
 // ── PATCH addLog per salvare su tabella log ──

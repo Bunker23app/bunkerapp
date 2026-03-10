@@ -590,7 +590,7 @@ function updateHomeAccessLevel() {
 // ════════════════════════════════════════
 // TABS STAFF
 // ════════════════════════════════════════
-const TABS = ['dashboard','calendario','spesa','chat','log','cerca','lavori','magazzino','pagamenti','profilo','configura'];
+const TABS = ['dashboard','calendario','spesa','chat','log','cerca','lavori','magazzino','pagamenti','profilo','configura','contatori'];
 var _currentTab = 'dashboard';
 
 function showTab(name) {
@@ -637,6 +637,9 @@ function showTab(name) {
       if (body) body.style.display = 'none';
       if (icon) icon.textContent = '▸';
     });
+  }
+  if (name === 'contatori') {
+    buildContatori();
   }
   _currentTab = name;
 }
@@ -1747,6 +1750,8 @@ function confermaAcquisto(i) {
       var vecchio = MAGAZZINO[gIdx].attuale;
       MAGAZZINO[gIdx].attuale = vecchio + qtyAcquistata;
       addLog('magazzino aggiornato: ' + MAGAZZINO[gIdx].nome + ' da ' + vecchio + ' a ' + MAGAZZINO[gIdx].attuale + ' ' + MAGAZZINO[gIdx].unita);
+      // Aggiorna contatore acquistato
+      aggiornaContatoreAcquisto(item.magazzinoId, qtyAcquistata);
       // Imposta guard: questo client ha già aggiornato il magazzino localmente,
       // il realtime DELETE su spesa non deve fare un secondo incremento.
       var guardKey = 'mz-' + item.magazzinoId;
@@ -2173,6 +2178,14 @@ function updateDash() {
   // Chat: solo non letti
   var wc = document.getElementById('wChat');
   if (wc) wc.textContent = _unreadChat;
+
+  // Contatori: totale acquistato + consumato
+  var wc2 = document.getElementById('wContatori');
+  if (wc2) {
+    var totAcq = 0, totCons = 0;
+    Object.values(CONTATORI).forEach(function(c) { totAcq += (c.acquistato||0); totCons += (c.consumato||0); });
+    wc2.textContent = totAcq + '/' + totCons;
+  }
 
   // Log: solo non visti
   var wll = document.getElementById('wLog');
@@ -2678,6 +2691,10 @@ function updateMagazzinoById(itemId, newQty) {
   var oldQty = item.attuale;
   if (oldQty === newQty) return; // nessuna modifica
   item.attuale = newQty;
+  // Se la quantità scende, registra consumo
+  if (newQty < oldQty) {
+    aggiornaContatoreConsumo(item.id, oldQty - newQty);
+  }
   // Aggiorna input nel DOM
   var inp = document.getElementById('qty-' + itemId);
   if (inp && parseInt(inp.value) !== newQty) inp.value = newQty;
@@ -3621,6 +3638,7 @@ function buildAll() {
   buildConsigliati();
   buildSuggerimenti();
   buildValutazioni();
+  buildContatori();
   updateDash();
   updateLogoutBtns();
   updateStaffNavBtns();
@@ -3946,6 +3964,125 @@ function modalConfirmWithFeedback() {
       if (window._modalCb) window._modalCb();
     }, MS_ANIM);
   }
+}
+
+// ════════════════════════════════════════
+// CONTATORI
+// ════════════════════════════════════════
+// CONTATORI[magazzinoId] = { acquistato: N, consumato: N }
+var CONTATORI = {};
+
+var _cntCollapsed = { alcolico: true, analcolico: true, altro: true };
+
+function toggleCntSection(cat) {
+  _cntCollapsed[cat] = !_cntCollapsed[cat];
+  var body = document.getElementById('cnt-body-' + cat);
+  var icon = document.getElementById('cnt-icon-' + cat);
+  if (body) body.style.display = _cntCollapsed[cat] ? 'none' : 'block';
+  if (icon) icon.textContent = _cntCollapsed[cat] ? '▸' : '▾';
+}
+
+function buildContatori() {
+  var cats = ['alcolico', 'analcolico', 'altro'];
+  cats.forEach(function(cat) {
+    var el = document.getElementById('contatoriList-' + cat);
+    if (el) el.innerHTML = '';
+  });
+
+  var catCounts = { alcolico: 0, analcolico: 0, altro: 0 };
+  var totAcq = 0, totCons = 0;
+
+  MAGAZZINO.forEach(function(item) {
+    var cat = (item.categoria === 'alcolico' || item.categoria === 'analcolico') ? item.categoria : 'altro';
+    catCounts[cat]++;
+
+    var list = document.getElementById('contatoriList-' + cat);
+    if (!list) return;
+
+    var cnt = CONTATORI[item.id] || { acquistato: 0, consumato: 0 };
+    totAcq  += (cnt.acquistato  || 0);
+    totCons += (cnt.consumato   || 0);
+
+    var row = document.createElement('div');
+    row.className = 'spesa-row';
+    row.style.cssText = 'flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px';
+    row.innerHTML =
+      '<span class="spesa-name" style="flex:1;min-width:100px">' + item.nome + '</span>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+        '<span style="font-family:var(--mono);font-size:8px;color:#2a9a2a;letter-spacing:1px;white-space:nowrap">🛒 ACQUISTATI</span>' +
+        '<button onclick="stepContatore(' + item.id + ',\'acquistato\',-1)" style="width:22px;height:22px;border-radius:3px;border:1px solid #333;background:#1a1a1a;color:#aaa;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0">−</button>' +
+        '<span id="cnt-acq-' + item.id + '" style="font-family:var(--mono);font-size:13px;font-weight:bold;color:#2a9a2a;min-width:24px;text-align:center">' + (cnt.acquistato || 0) + '</span>' +
+        '<button onclick="stepContatore(' + item.id + ',\'acquistato\',1)" style="width:22px;height:22px;border-radius:3px;border:1px solid #333;background:#1a1a1a;color:#aaa;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0">+</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+        '<span style="font-family:var(--mono);font-size:8px;color:#cc2200;letter-spacing:1px;white-space:nowrap">📦 CONSUMATI</span>' +
+        '<button onclick="stepContatore(' + item.id + ',\'consumato\',-1)" style="width:22px;height:22px;border-radius:3px;border:1px solid #333;background:#1a1a1a;color:#aaa;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0">−</button>' +
+        '<span id="cnt-cons-' + item.id + '" style="font-family:var(--mono);font-size:13px;font-weight:bold;color:#cc2200;min-width:24px;text-align:center">' + (cnt.consumato || 0) + '</span>' +
+        '<button onclick="stepContatore(' + item.id + ',\'consumato\',1)" style="width:22px;height:22px;border-radius:3px;border:1px solid #333;background:#1a1a1a;color:#aaa;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0">+</button>' +
+      '</div>' +
+      '<button onclick="resetContatore(' + item.id + ')" style="height:22px;padding:0 8px;border-radius:3px;border:1px solid #333;background:transparent;color:#555;font-family:var(--mono);font-size:8px;letter-spacing:1px;cursor:pointer;white-space:nowrap;flex-shrink:0">↺ RESET</button>';
+    list.appendChild(row);
+  });
+
+  // Aggiorna badge per ogni sezione
+  cats.forEach(function(cat) {
+    var badge = document.getElementById('cnt-badge-' + cat);
+    if (badge) badge.textContent = catCounts[cat];
+  });
+
+  var badge = document.getElementById('contatoriCount');
+  if (badge) badge.textContent = 'TOT ACQ: ' + totAcq + ' · CONS: ' + totCons;
+  updateDash();
+}
+
+function stepContatore(itemId, tipo, delta) {
+  if (!CONTATORI[itemId]) CONTATORI[itemId] = { acquistato: 0, consumato: 0 };
+  var old = CONTATORI[itemId][tipo] || 0;
+  CONTATORI[itemId][tipo] = Math.max(0, old + delta);
+  // Aggiorna DOM diretto senza rebuild completo
+  var el = document.getElementById('cnt-' + (tipo === 'acquistato' ? 'acq' : 'cons') + '-' + itemId);
+  if (el) el.textContent = CONTATORI[itemId][tipo];
+  var badge = document.getElementById('contatoriCount');
+  if (badge) {
+    var totAcq = 0, totCons = 0;
+    Object.values(CONTATORI).forEach(function(c) { totAcq += (c.acquistato||0); totCons += (c.consumato||0); });
+    badge.textContent = 'TOT ACQ: ' + totAcq + ' · CONS: ' + totCons;
+  }
+  saveContatori();
+  updateDash();
+}
+
+function resetContatore(itemId) {
+  var item = MAGAZZINO.find(function(m){ return m.id === itemId; });
+  var nome = item ? item.nome : 'articolo';
+  showConfirm('Azzerare i contatori di "' + nome + '"?', function() {
+    CONTATORI[itemId] = { acquistato: 0, consumato: 0 };
+    var acqEl  = document.getElementById('cnt-acq-'  + itemId);
+    var consEl = document.getElementById('cnt-cons-' + itemId);
+    if (acqEl)  acqEl.textContent  = '0';
+    if (consEl) consEl.textContent = '0';
+    saveContatori();
+    updateDash();
+    showToast('// CONTATORI AZZERATI ✓', 'success');
+  }, 'RESET CONTATORE', 'AZZERA');
+}
+
+// Aggiorna contatori acquistato quando spesa viene completata (chiamato da confermaAcquisto)
+function aggiornaContatoreAcquisto(magazzinoId, qty) {
+  if (!magazzinoId || !(qty > 0)) return;
+  if (!CONTATORI[magazzinoId]) CONTATORI[magazzinoId] = { acquistato: 0, consumato: 0 };
+  CONTATORI[magazzinoId].acquistato = (CONTATORI[magazzinoId].acquistato || 0) + qty;
+  saveContatori();
+  updateDash();
+}
+
+// Aggiorna contatori consumato quando la quantità magazzino scende (chiamato da updateMagazzinoById)
+function aggiornaContatoreConsumo(magazzinoId, delta) {
+  if (!magazzinoId || !(delta > 0)) return;
+  if (!CONTATORI[magazzinoId]) CONTATORI[magazzinoId] = { acquistato: 0, consumato: 0 };
+  CONTATORI[magazzinoId].consumato = (CONTATORI[magazzinoId].consumato || 0) + delta;
+  saveContatori();
+  updateDash();
 }
 
 // ════════════════════════════════════════

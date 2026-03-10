@@ -311,6 +311,11 @@
           <span class="dash-widget-num" id="wLog">0</span>
           <span class="dash-widget-label" id="wlabel-log">LOG EVENTI</span>
         </div>
+        <div class="dash-widget" onclick="showTab('contatori')">
+          <span class="dash-widget-icon">🔢</span>
+          <span class="dash-widget-num" id="wContatori">0</span>
+          <span class="dash-widget-label" id="wlabel-contatori">CONTATORI</span>
+        </div>
         <div class="dash-widget admin-only" onclick="showTab('configura')" style="border-color:#661100">
           <span class="dash-widget-icon">⚙️</span>
           <span class="dash-widget-num" style="font-size:14px;margin:4px 0">—</span>
@@ -439,6 +444,54 @@
         <div class="mz-section-body" id="mz-body-altro" style="display:none">
           <div id="magazzinoList-altro"></div>
           <button class="mz-add-btn" onclick="openMagazzinoModal(undefined, 'altro')">+ AGGIUNGI</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TAB: CONTATORI -->
+  <div class="scrollable" id="tab-contatori" style="display:none">
+    <div class="staff-content">
+      <div class="section-head">
+        <span class="section-head-title">CONTATORI MAGAZZINO</span>
+        <div class="section-head-line"></div>
+        <span class="count-badge" id="contatoriCount">—</span>
+      </div>
+
+      <!-- SEZIONE: ALCOLICI -->
+      <div class="mz-section" id="cnt-sec-alcolico">
+        <button class="mz-collapse-btn" onclick="toggleCntSection('alcolico')">
+          <span class="mz-collapse-icon" id="cnt-icon-alcolico">▸</span>
+          <span class="mz-collapse-label">🍺 ALCOLICI</span>
+          <span class="mz-collapse-badge" id="cnt-badge-alcolico"></span>
+        </button>
+        <div class="mz-section-body" id="cnt-body-alcolico" style="display:none">
+          <div id="contatoriList-alcolico"></div>
+        </div>
+      </div>
+
+      <!-- SEZIONE: ANALCOLICI -->
+      <div class="mz-section" id="cnt-sec-analcolico">
+        <button class="mz-collapse-btn" onclick="toggleCntSection('analcolico')">
+          <span class="mz-collapse-icon" id="cnt-icon-analcolico">▸</span>
+          <span class="mz-collapse-label">🥤 ANALCOLICI</span>
+          <span class="mz-collapse-badge" id="cnt-badge-analcolico"></span>
+        </button>
+        <div class="mz-section-body" id="cnt-body-analcolico" style="display:none">
+          <div id="contatoriList-analcolico"></div>
+        </div>
+      </div>
+
+      <!-- SEZIONE: ALTRO -->
+      <div class="mz-section" id="cnt-sec-altro">
+        <button class="mz-collapse-btn" onclick="toggleCntSection('altro')">
+          <span class="mz-collapse-icon" id="cnt-icon-altro">▸</span>
+          <span class="mz-collapse-label">📦 ALTRO</span>
+          <span class="mz-collapse-badge" id="cnt-badge-altro"></span>
+        </button>
+        <div class="mz-section-body" id="cnt-body-altro" style="display:none">
+          <div id="contatoriList-altro"></div>
         </div>
       </div>
 

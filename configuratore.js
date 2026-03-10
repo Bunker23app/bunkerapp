@@ -12,6 +12,7 @@ var WIDGET_CONFIG = [
   { id:'profilo',    icon:'👤', label:'PROFILO',          enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',            enabled:true },
   { id:'log',        icon:'📋', label:'LOG EVENTI',       enabled:true, adminOnly:true },
+  { id:'contatori',  icon:'🔢', label:'CONTATORI',        enabled:true, staffOnly:true },
 ];
 
 var TAB_CONFIG = [
@@ -24,6 +25,7 @@ var TAB_CONFIG = [
   { id:'cerca',      icon:'🔍', label:'CERCA',        enabled:true },
   { id:'log',        icon:'📋', label:'LOG',          enabled:true, adminOnly:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',      enabled:true },
+  { id:'contatori',  icon:'🔢', label:'CONTATORI',    enabled:true, staffOnly:true },
 ];
 
 var BENVENUTO_TEXT = '';
@@ -126,6 +128,7 @@ function buildConfigura() {
         ' onchange="WIDGET_CONFIG[' + i + '].label=this.value.toUpperCase();syncWidgetLabel(\'' + w.id + '\',this.value.toUpperCase());saveConfig()"' +
         '/>' +
         (w.adminOnly ? '<span style="color:#555;font-size:7px;font-family:var(--mono);flex-shrink:0">ADMIN</span>' : '') +
+        (w.staffOnly ? '<span style="color:#2a6b6b;font-size:7px;font-family:var(--mono);flex-shrink:0">STAFF+</span>' : '') +
         '<label class="cfg-toggle"><input type="checkbox"' + (w.enabled ? ' checked' : '') +
         ' onchange="syncWidgetTabEnabled(\'' + w.id + '\',this.checked);saveConfig()"><span class="cfg-toggle-slider"></span></label>';
 
@@ -305,6 +308,18 @@ function applyWidgetConfigForRole(role) {
       grid.appendChild(el); // sempre, parentNode è già null dopo remove
     }
   });
+
+  // Gestione contatori: visibile solo a staff e admin
+  var contatoriEl = existing['contatori'];
+  if (!contatoriEl) contatoriEl = document.querySelector('#tab-dashboard .dash-widget[onclick*="showTab(\'contatori\')"]');
+  if (contatoriEl) {
+    var wContCfg = (config === AIUTANTE_WIDGET_CONFIG)
+      ? AIUTANTE_WIDGET_CONFIG.find(function(x){ return x.id === 'contatori'; })
+      : WIDGET_CONFIG.find(function(x){ return x.id === 'contatori'; });
+    var isStaffOrAdmin = (role === 'staff' || role === 'admin');
+    contatoriEl.style.display = (isStaffOrAdmin && wContCfg && wContCfg.enabled) ? '' : 'none';
+    grid.appendChild(contatoriEl);
+  }
 
   applyWidgetLabels();
 }
