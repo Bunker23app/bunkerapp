@@ -950,6 +950,46 @@ function buildSCal() {
 }
 
 // ════════════════════════════════════════
+// EVENTO IN CORSO — funzione globale condivisa
+// ════════════════════════════════════════
+function isEventoInCorso(e) {
+  if (e.terminato) return false;
+  var now = new Date();
+  var todayAnno   = now.getFullYear();
+  var todayMese   = now.getMonth() + 1;
+  var todayGiorno = now.getDate();
+  var nowMinutes  = now.getHours() * 60 + now.getMinutes();
+
+  var startDate = new Date(e.anno, e.mese-1, e.giorno);
+  var endDate = (e.giornoFine && e.meseFine && e.annoFine)
+    ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
+    : startDate;
+  var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
+
+  // Oggi deve essere compreso tra data inizio e data fine
+  if (todayDate < startDate || todayDate > endDate) return false;
+
+  // Controlla ora
+  var oraParts = (e.ora || '').split(':');
+  var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
+
+  if (e.ora_fine) {
+    var oraFineParts = e.ora_fine.split(':');
+    var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
+    // Gestisci eventi che finiscono dopo mezzanotte (ora fine < ora inizio)
+    if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60;
+    var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
+    return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
+  }
+  // Nessuna ora fine: in corso dalla ora inizio fino a fine giornata (stesso giorno)
+  if (todayDate.getTime() === startDate.getTime()) {
+    return nowMinutes >= oraInizioMin;
+  }
+  // Giorni intermedi di un evento multi-giorno senza ora fine: considerato in corso
+  return true;
+}
+
+// ════════════════════════════════════════
 // PROSSIMO EVENTO (home)
 // ════════════════════════════════════════
 var _nextEventInterval = null;
@@ -961,39 +1001,11 @@ function buildHomeNextEvent() {
   // Pulisci interval precedente
   if (_nextEventInterval) { clearInterval(_nextEventInterval); _nextEventInterval = null; }
 
-  var now = new Date();
   var today = new Date(); today.setHours(0,0,0,0);
-  var nowMinutes = now.getHours() * 60 + now.getMinutes();
-  var todayAnno   = now.getFullYear();
-  var todayMese   = now.getMonth() + 1;
-  var todayGiorno = now.getDate();
-
-  // Determina se un evento è attualmente in corso
-  function isInCorso(e) {
-    if (e.terminato) return false;
-    var startDate = new Date(e.anno, e.mese-1, e.giorno);
-    var endDate = e.giornoFine && e.meseFine && e.annoFine
-      ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
-      : startDate;
-    var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
-    if (todayDate < startDate || todayDate > endDate) return false;
-    // Stesso giorno (o intervallo che include oggi): controlla ora
-    var oraParts = (e.ora || '').split(':');
-    var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
-    if (e.ora_fine) {
-      var oraFineParts = e.ora_fine.split(':');
-      var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
-      if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60; // oltre mezzanotte
-      var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
-      return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
-    }
-    // Nessuna ora fine: considera in corso dalla ora inizio fino a fine giornata
-    return nowMinutes >= oraInizioMin;
-  }
 
   // Solo eventi su invito futuri, escludendo quelli attualmente in corso
   var next = EVENTI
-    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today && !isInCorso(e); })
+    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today && !isEventoInCorso(e); })
     .sort(function(a,b) { return new Date(a.anno,a.mese-1,a.giorno) - new Date(b.anno,b.mese-1,b.giorno); })[0];
 
   if (!next) { el.innerHTML = ''; return; }
@@ -1055,50 +1067,10 @@ function buildEventoInCorsoBanner() {
   var banner = document.getElementById('eventoInCorsoBanner');
   if (!banner) return;
 
-  // Cerca un evento attualmente in corso:
-  // ora corrente >= ora inizio E ora corrente <= ora fine (stesso giorno) E non terminato
-  var now = new Date();
-  var todayAnno  = now.getFullYear();
-  var todayMese  = now.getMonth() + 1;
-  var todayGiorno= now.getDate();
-  var nowMinutes = now.getHours() * 60 + now.getMinutes();
-
+  // Cerca il primo evento in corso usando la funzione globale condivisa con buildHomeNextEvent
   var evInCorso = null;
   for (var i = 0; i < EVENTI.length; i++) {
-    var e = EVENTI[i];
-    if (e.terminato) continue;
-    // Controlla che oggi sia compreso tra data inizio e data fine (o stesso giorno)
-    var startDate = new Date(e.anno, e.mese-1, e.giorno);
-    var endDate = e.giornoFine && e.meseFine && e.annoFine
-      ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
-      : startDate;
-    var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
-    if (todayDate < startDate || todayDate > endDate) continue;
-
-    // Analizza ora inizio
-    var oraParts = (e.ora || '').split(':');
-    var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
-
-    // Ora fine: se definita usa quella, altrimenti considera l'evento senza fine definita
-    if (e.ora_fine) {
-      var oraFineParts = e.ora_fine.split(':');
-      var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
-      // Gestisci eventi che finiscono dopo mezzanotte (ora fine < ora inizio)
-      if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60;
-      var nowAdj = nowMinutes;
-      // Se ora corrente è prima dell'inizio, potremmo essere "dopo mezzanotte"
-      if (nowAdj < oraInizioMin && oraFineMin > 24*60) nowAdj += 24 * 60;
-      if (nowAdj >= oraInizioMin && nowAdj <= oraFineMin) {
-        evInCorso = e;
-        break;
-      }
-    } else {
-      // Nessuna ora fine: mostra banner solo se siamo nello stesso giorno e dopo l'ora inizio
-      if (todayDate.getTime() === startDate.getTime() && nowMinutes >= oraInizioMin) {
-        evInCorso = e;
-        break;
-      }
-    }
+    if (isEventoInCorso(EVENTI[i])) { evInCorso = EVENTI[i]; break; }
   }
 
   if (evInCorso) {
