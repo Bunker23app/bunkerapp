@@ -83,7 +83,7 @@ body {
   font-family: var(--body);
   color: var(--white);
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: visible;
   max-width: 100vw;
 }
 
@@ -1995,7 +1995,7 @@ hr, .divider {
    deve uscire dal viewport
 ══════════════════════════════════════ */
 html, body {
-  overflow-x: hidden;
+  overflow-x: visible;
   max-width: 100vw;
 }
 .phone, .screen, .scrollable,
