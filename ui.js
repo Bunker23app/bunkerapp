@@ -173,7 +173,13 @@ function _checkPerm(perm) {
 }
 function canViewContatori()  { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_view  : ROLES.STAFF); }
 function canResetContatori() { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_reset : ROLES.STAFF); }
-function canAddUser()        { return _checkPerm(typeof ADD_USER_PERM !== 'undefined' ? ADD_USER_PERM : ROLES.ADMIN); }
+function canAddUser() {
+  // Admin può sempre creare profili
+  if (isAdmin()) return true;
+  // Altri ruoli: solo se il flag canCreateProfiles è attivo sul loro account
+  if (currentUser && currentUser.canCreateProfiles) return true;
+  return false;
+}
 
 // ════════════════════════════════════════
 // CONSOLIDATED UTILITIES
@@ -3130,6 +3136,7 @@ function buildMembriList() {
         '<div style="flex:1">' +
           '<div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:' + (m.sospeso ? '#555' : 'var(--white)') + '">' + m.name.toUpperCase() +
             (m.sospeso ? '<span style="font-family:var(--mono);font-size:7px;color:#cc2200;letter-spacing:1px;margin-left:6px">⛔ SOSPESO</span>' : '') +
+            (m.canCreateProfiles ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px">✚ CREA PROFILI</span>' : '') +
           '</div>' +
           '<div style="font-family:monospace;font-size:8px;color:' + rl.color + ';letter-spacing:1px">' + rl.label + '</div>' +
         '</div>' +
@@ -3238,6 +3245,11 @@ function openEditMembroModal(i) {
     '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
     '<input type="checkbox" id="mSospeso"' + (m.sospeso ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
     '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.sospeso ? '#cc2200' : '#888') + '">ACCOUNT SOSPESO</span>' +
+    '</label></div>' +
+    '<div style="margin-top:8px;padding:10px;border:1px solid ' + (m.canCreateProfiles ? '#22cc44' : '#333') + ';border-radius:3px;background:' + (m.canCreateProfiles ? 'rgba(34,204,68,0.06)' : 'transparent') + '">' +
+    '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
+    '<input type="checkbox" id="mCanCreate"' + (m.canCreateProfiles ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
+    '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.canCreateProfiles ? '#22cc44' : '#888') + '">PU\xf2 CREARE NUOVI PROFILI</span>' +
     '</label></div>';
 
   // Attiva bottoni foto membro
@@ -3287,12 +3299,14 @@ function openEditMembroModal(i) {
     var pw      = document.getElementById('mPwAcc').value.trim();
     var ruolo   = document.getElementById('mRuoloAcc').value;
     var sospeso = document.getElementById('mSospeso').checked;
-    MEMBERS[i].name    = nome;
-    MEMBERS[i].initial = nome.charAt(0).toUpperCase();
-    MEMBERS[i].role    = ruolo;
-    MEMBERS[i].sospeso = sospeso;
+    var canCreate = document.getElementById('mCanCreate').checked;
+    MEMBERS[i].name             = nome;
+    MEMBERS[i].initial          = nome.charAt(0).toUpperCase();
+    MEMBERS[i].role             = ruolo;
+    MEMBERS[i].sospeso          = sospeso;
+    MEMBERS[i].canCreateProfiles = canCreate;
     if (pw) sha256(pw).then(function(h){ MEMBERS[i].password = h; saveMembers(); });
-    addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : ''));
+    addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : '') + (canCreate ? ' [PUÒ CREARE PROFILI]' : ''));
     saveMembers();
     buildMembriList();
     closeModal();
@@ -3880,13 +3894,8 @@ window.addEventListener('popstate', function(e) {
       // Da qualsiasi widget → torna alla dashboard
       showTab('dashboard');
     } else {
-      // Dalla dashboard → torna alla schermata pubblica precedente
-      if (_navHistory.length > 0) {
-        var prev = _navHistory.pop();
-        navigate(prev, true);
-      } else {
-        navigate('screenHome', true);
-      }
+      // Dalla dashboard → stessa funzione del pulsante "← PUBBLICA"
+      navigate('screenHome', true);
     }
     history.pushState({}, '', '');
     return;

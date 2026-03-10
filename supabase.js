@@ -90,6 +90,7 @@ function saveMembers() {
           role: m.role || 'utente',
           foto_url: m.photo || null,
           sospeso: m.sospeso || false,
+          can_create_profiles: m.canCreateProfiles || false,
         };
       });
       // Upsert uno alla volta per rispettare unique su name
@@ -542,6 +543,7 @@ async function loadAllData() {
           name: dm.name, initial: dm.initial, color: dm.color,
           password: dm.password_hash, role: dm.role,
           photo: dm.foto_url || null, sospeso: dm.sospeso || false,
+          canCreateProfiles: dm.can_create_profiles || false,
         };
         if (existing) Object.assign(existing, mapped);
         else MEMBERS.push(mapped);
