@@ -2691,8 +2691,10 @@ function updateMagazzinoById(itemId, newQty) {
 
   syncMagazzinoWithSpesa();
   updateDash();
-  saveMagazzino();
-  saveSpesa();
+  // NOTA: saveMagazzino() e saveSpesa() NON vengono chiamati qui.
+  // buildMagazzino() è chiamato anche da realtime e da loadAllData:
+  // salvare qui causerebbe il ciclo DELETE→INSERT→realtime→sync→save.
+  // Il salvataggio avviene solo nelle funzioni di modifica utente (updateMagazzinoById, stepMagazzino, ecc.)
 }
 
 function syncMagazzinoWithSpesa() {
@@ -2733,7 +2735,8 @@ function syncMagazzinoWithSpesa() {
       }
     }
   });
-  buildSpesa();
+  // NOTA: buildSpesa() NON viene chiamata qui — è compito del chiamante.
+  // syncMagazzinoWithSpesa() modifica solo i dati in SPESA.
 }
 
 // checkMagazzinoAndAddToSpesa è stato unificato con syncMagazzinoWithSpesa (vedere chiamate)
@@ -3699,6 +3702,11 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       _sbReady = true;
       await loadAllData();
+      // Pulizia una-tantum: rimuove duplicati accumulati in passato nella tabella spesa
+      await cleanupDuplicateSpesa();
+      // Sincronizza spesa col magazzino (una sola volta al caricamento) e salva
+      syncMagazzinoWithSpesa();
+      saveSpesa();
       buildAll();
       if (currentUser) {
         // Aggiorna riferimento currentUser con dati freschi da DB

@@ -144,12 +144,13 @@ function saveEventi() {
 // BACHECA e INFO — salvate in appconfig (sono strutture ricche con foto)
 // Incluse nella saveConfig()
 
-// SPESA
+// SPESA — upsert intelligente: aggiorna/inserisce le righe presenti, elimina quelle rimosse
+// NON cancella e riscrive l'intera tabella per evitare il ciclo DELETE→INSERT→realtime→sync→save
 function saveSpesa() {
   _debounce('spesa', async function() {
     if (!_sbReady) return;
     try {
-      await getSupabase().from('spesa').delete().gt('id', 0);
+      var sb = getSupabase();
       var rows = SPESA.map(function(s) {
         return {
           id: s.id,
@@ -163,12 +164,79 @@ function saveSpesa() {
           added_by: currentUser ? currentUser.name : null,
         };
       });
+      // 1. Upsert: aggiorna se esiste, inserisce se non esiste
       if (rows.length) {
-        var res = await getSupabase().from('spesa').insert(rows);
-        if (res.error) console.warn('[sb.spesa]', res.error.message);
+        var res = await sb.from('spesa').upsert(rows, { onConflict: 'id' });
+        if (res.error) console.warn('[sb.spesa upsert]', res.error.message);
+      }
+      // 2. Elimina righe che non sono più in SPESA (rimosse dall'utente)
+      var ids = SPESA.map(function(s){ return s.id; });
+      if (ids.length) {
+        await sb.from('spesa').delete().not('id', 'in', '(' + ids.join(',') + ')');
+      } else {
+        // Lista vuota: cancella tutto
+        await sb.from('spesa').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.spesa]', e.message); }
   }, 600);
+}
+
+// Rimuove duplicati dalla tabella spesa (stesso magazzino_id con from_magazzino=true)
+// Chiamata UNA SOLA VOLTA al caricamento iniziale per bonificare il DB
+async function cleanupDuplicateSpesa() {
+  if (!_sbReady) return;
+  try {
+    var sb = getSupabase();
+    var res = await sb.from('spesa').select('*');
+    if (res.error || !res.data) return;
+    var rows = res.data;
+
+    // Raggruppa per magazzino_id le righe automatiche (from_magazzino=true)
+    var seen = {};
+    var toDelete = [];
+    rows.forEach(function(r) {
+      if (!r.from_magazzino || !r.magazzino_id) return;
+      var key = r.magazzino_id;
+      if (seen[key] === undefined) {
+        seen[key] = r.id; // tieni il primo (id più basso = più vecchio)
+      } else {
+        // duplicato: marca per eliminazione (tieni il più vecchio, elimina i nuovi)
+        // In realtà vogliamo tenere quello con id più BASSO
+        if (r.id < seen[key]) {
+          toDelete.push(seen[key]);
+          seen[key] = r.id;
+        } else {
+          toDelete.push(r.id);
+        }
+      }
+    });
+
+    if (toDelete.length > 0) {
+      console.log('[cleanup spesa] eliminazione ' + toDelete.length + ' duplicati:', toDelete);
+      await sb.from('spesa').delete().in('id', toDelete);
+      // Ricarica SPESA locale dopo cleanup
+      var fresh = await sb.from('spesa').select('*');
+      if (!fresh.error && fresh.data) {
+        SPESA = fresh.data.map(function(s) {
+          var obj = {
+            id: s.id, nome: s.item, done: s.done || false,
+            qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
+            unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
+            magazzinoId: s.magazzino_id || null, qtyNum: 0, _categoria: null,
+          };
+          if (obj.qty) { var p = parseFloat(obj.qty); if (!isNaN(p)) obj.qtyNum = p; }
+          if (obj.fromMagazzino && obj.magazzinoId) {
+            var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; });
+            if (mz) { obj._categoria = mz.categoria; obj.costoUnitario = mz.costoUnitario; obj.unita = mz.unita; }
+          }
+          return obj;
+        });
+        var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
+        if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
+      }
+      console.log('[cleanup spesa] completato');
+    }
+  } catch(e) { console.warn('[cleanup spesa]', e.message); }
 }
 
 // LAVORI
@@ -744,7 +812,7 @@ function initRealtime() {
         var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
         if (it) it.attuale = r.attuale;
       });
-      buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+      buildMagazzino(); updateDash();
     });
   }
   _magazzinoChannel = sb.channel('magazzino-realtime')
@@ -752,7 +820,7 @@ function initRealtime() {
       console.log('[DIAG][magazzino] INSERT ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
+      if (item) { item.attuale = row.attuale; buildMagazzino(); updateDash(); }
       // item_id sconosciuto = nuovo articolo custom: la definizione è già stata scritta in appconfig
       // prima dell'upsert magazzino (vedi saveMagazzino). Prova subito; se il nuovo articolo
       // non è ancora presente nel config (latenza DB), riprova dopo 1500ms.
@@ -770,7 +838,7 @@ function initRealtime() {
       console.log('[DIAG][magazzino] UPDATE ricevuto · payload.new:', JSON.stringify(payload.new));
       var row = payload.new; if (!row) return;
       var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; buildMagazzino(); syncMagazzinoWithSpesa(); updateDash(); }
+      if (item) { item.attuale = row.attuale; buildMagazzino(); updateDash(); }
       else { _reloadMagazzino(true); }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
@@ -788,7 +856,7 @@ function initRealtime() {
             item.attuale = 0;
           }
         }
-        buildMagazzino(); syncMagazzinoWithSpesa(); updateDash();
+        buildMagazzino(); updateDash();
       } else {
         // Fallback: REPLICA IDENTITY non FULL — ricarica l'intera tabella + config
         console.warn('[magazzino] DELETE senza old.item_id — eseguire ALTER TABLE magazzino REPLICA IDENTITY FULL');
