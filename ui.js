@@ -33,9 +33,6 @@ function $id(id) { return document.getElementById(id); }
 function nl2br(s) { return s ? s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>") : ""; }
 function $qs(sel, ctx) { return (ctx || document).querySelector(sel); }
 function setDisplay(id, val) { var el = $id(id); if (el) el.style.display = val; }
-function showEl(id)  { setDisplay(id, 'block'); }
-function hideEl(id)  { setDisplay(id, 'none'); }
-function toggleEl(id, cond) { setDisplay(id, cond ? 'block' : 'none'); }
 
 /* ── Toast costanti ── */
 const T_SAVED     = '// SALVATO ✓';
@@ -162,7 +159,6 @@ function isAiutante() { return !!currentUser && (currentUser.role === ROLES.STAF
 function isUtente()   { return !!currentUser && (currentUser.role === ROLES.UTENTE || currentUser.role === ROLES.PREMIUM); }
 
 function canEdit()     { return isStaff(); }
-function canEditSpesa(){ return !!currentUser; }
 
 function _checkPerm(perm) {
   if (!currentUser) return false;
@@ -219,43 +215,6 @@ function toggleItem(array, index, name, buildFn, saveFn) {
 }
 
 // Generic modal opener
-function openGenericModal(title, isEdit, index, dataArray, fields, saveFn) {
-  var item = isEdit ? dataArray[index] : null;
-  $id('modalTitle').textContent = title;
-  
-  var html = '';
-  Object.keys(fields).forEach(function(key) {
-    var f = fields[key];
-    var val = isEdit ? (item[key] || '') : (f.default || '');
-    if (f.type === 'select') {
-      html += '<div><label class="modal-label">// ' + f.label + '</label><select class="modal-input" id="m' + key + '">';
-      f.options.forEach(function(opt) {
-        html += '<option value="' + opt.value + '"' + (isEdit && val === opt.value ? ' selected' : '') + '>' + opt.label + '</option>';
-      });
-      html += '</select></div>';
-    } else if (f.type === 'textarea') {
-      html += '<div><label class="modal-label">// ' + f.label + '</label><textarea class="modal-input" id="m' + key + '" rows="' + (f.rows||3) + '" style="resize:none">' + val + '</textarea></div>';
-    } else {
-      html += '<div><label class="modal-label">// ' + f.label + '</label><input class="modal-input" id="m' + key + '" type="' + (f.type||'text') + '" ' + (f.attr||'') + ' value="' + val + '"/></div>';
-    }
-  });
-  
-  $id('modalBody').innerHTML = html;
-  
-  window._modalCb = function() {
-    saveFn(isEdit, index, Object.keys(fields).reduce(function(obj, key) {
-      var el = document.getElementById('m' + key);
-      var val = el.value;
-      if (fields[key].type === 'number') val = parseInt(val) || 0;
-      obj[key] = val;
-      return obj;
-    }, {}));
-    closeModal();
-  };
-  
-  openModal();
-}
-
 function handleStaffBtn() {
   var _isStaff = isAiutante();
   var _isUtente = isUtente();
@@ -1502,10 +1461,6 @@ function buildLinks(pagina) {
   var arr = LINKS_PAGE[pagina] || [];
   if (arr.length === 0 && !canEdit()) { container.innerHTML = ''; return; }
   _renderLinkBlock(container, arr, 'page', pagina);
-}
-
-function buildAllLinks() {
-  ['info','bacheca'].forEach(buildLinks);
 }
 
 function buildEventLinks(ev, container) {
