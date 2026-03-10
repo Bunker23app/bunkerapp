@@ -961,11 +961,39 @@ function buildHomeNextEvent() {
   // Pulisci interval precedente
   if (_nextEventInterval) { clearInterval(_nextEventInterval); _nextEventInterval = null; }
 
+  var now = new Date();
   var today = new Date(); today.setHours(0,0,0,0);
+  var nowMinutes = now.getHours() * 60 + now.getMinutes();
+  var todayAnno   = now.getFullYear();
+  var todayMese   = now.getMonth() + 1;
+  var todayGiorno = now.getDate();
 
-  // Solo eventi su invito futuri
+  // Determina se un evento è attualmente in corso
+  function isInCorso(e) {
+    if (e.terminato) return false;
+    var startDate = new Date(e.anno, e.mese-1, e.giorno);
+    var endDate = e.giornoFine && e.meseFine && e.annoFine
+      ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
+      : startDate;
+    var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
+    if (todayDate < startDate || todayDate > endDate) return false;
+    // Stesso giorno (o intervallo che include oggi): controlla ora
+    var oraParts = (e.ora || '').split(':');
+    var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
+    if (e.ora_fine) {
+      var oraFineParts = e.ora_fine.split(':');
+      var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
+      if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60; // oltre mezzanotte
+      var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
+      return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
+    }
+    // Nessuna ora fine: considera in corso dalla ora inizio fino a fine giornata
+    return nowMinutes >= oraInizioMin;
+  }
+
+  // Solo eventi su invito futuri, escludendo quelli attualmente in corso
   var next = EVENTI
-    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today; })
+    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today && !isInCorso(e); })
     .sort(function(a,b) { return new Date(a.anno,a.mese-1,a.giorno) - new Date(b.anno,b.mese-1,b.giorno); })[0];
 
   if (!next) { el.innerHTML = ''; return; }
