@@ -963,22 +963,9 @@ function buildHomeNextEvent() {
 
   var today = new Date(); today.setHours(0,0,0,0);
 
-  // Solo eventi su invito futuri — escludi quelli attualmente in corso
-  var now = new Date();
+  // Solo eventi su invito futuri
   var next = EVENTI
-    .filter(function(e) {
-      var evDate = new Date(e.anno, e.mese-1, e.giorno);
-      if (evDate < today) return false;                          // passati: escludi
-      if (e.tipo !== 'invito') return false;
-      // Controlla se l'evento è in corso in questo momento
-      var oraParts = (e.ora || '00:00').split(':');
-      var evStart = new Date(e.anno, e.mese-1, e.giorno, parseInt(oraParts[0])||0, parseInt(oraParts[1])||0, 0, 0);
-      // Durata standard: 6 ore (puoi modificare il valore)
-      var durataMs = 6 * 60 * 60 * 1000;
-      var evEnd = new Date(evStart.getTime() + durataMs);
-      if (now >= evStart && now < evEnd) return false;           // in corso: escludi
-      return true;
-    })
+    .filter(function(e) { return e.tipo === 'invito' && new Date(e.anno, e.mese-1, e.giorno) >= today; })
     .sort(function(a,b) { return new Date(a.anno,a.mese-1,a.giorno) - new Date(b.anno,b.mese-1,b.giorno); })[0];
 
   if (!next) { el.innerHTML = ''; return; }
@@ -1584,6 +1571,24 @@ function deleteLink(tipo, contesto, idx) {
 // ════════════════════════════════════════
 // SPESA
 // ════════════════════════════════════════
+
+// Ripara una voce fromMagazzino con _categoria o costoUnitario mancante
+// recuperando i dati dall'array MAGAZZINO. Chiamata al momento del render
+// per coprire i casi in cui loadAllData ha processato spesa prima di magazzino.
+function _repairSpesaItem(item) {
+  if (!item.fromMagazzino || !item.magazzinoId) return;
+  var mz = MAGAZZINO.find(function(m) { return m.id === item.magazzinoId; });
+  if (!mz) return;
+  if (!item._categoria)    item._categoria    = mz.categoria;
+  if (!item.costoUnitario) item.costoUnitario = mz.costoUnitario;
+  if (!item.unita)         item.unita         = mz.unita;
+  // Ricostruisci qtyNum da qty testuale se non è stato impostato correttamente
+  if (!(parseFloat(item.qtyNum) > 0) && item.qty) {
+    var parsed = parseFloat(item.qty);
+    if (!isNaN(parsed) && parsed > 0) item.qtyNum = parsed;
+  }
+}
+
 function buildSpesa() {
   var list = document.getElementById('spesaList');
   if (!list) return;
@@ -1591,16 +1596,21 @@ function buildSpesa() {
   var todo = 0;
   var totaleGenerale = 0;
 
+  // Ripara tutti gli item fromMagazzino prima di raggruppare
+  SPESA.forEach(function(item) { _repairSpesaItem(item); });
+
   function renderVoce(item) {
     var i = SPESA.indexOf(item);
+    var qtyN = parseFloat(item.qtyNum);
+    var costoU = parseFloat(item.costoUnitario);
     if (!item.done) {
       todo++;
-      var t = (parseFloat(item.qtyNum) > 0 && parseFloat(item.costoUnitario) > 0) ? parseFloat(item.qtyNum) * parseFloat(item.costoUnitario) : 0;
+      var t = (qtyN > 0 && costoU > 0) ? qtyN * costoU : 0;
       totaleGenerale += t;
     }
     var row = document.createElement('div');
     row.className = 'spesa-row' + (item.done ? ' done' : '');
-    var totaleItem = (parseFloat(item.qtyNum) > 0 && parseFloat(item.costoUnitario) > 0) ? (parseFloat(item.qtyNum) * parseFloat(item.costoUnitario)).toFixed(2) + '€' : '—';
+    var totaleItem = (qtyN > 0 && costoU > 0) ? (qtyN * costoU).toFixed(2) + '€' : '—';
     var badge = item.fromMagazzino ? '<span style="font-family:var(--mono);font-size:7px;color:#2a6b6b;letter-spacing:1px;margin-left:4px">[AUTO]</span>' : '';
     row.innerHTML =
       '<div class="spesa-check ' + (item.done ? 'checked' : '') + '" onclick="toggleSpesa(' + i + ')">' + (item.done ? '✓' : '') + '</div>' +
@@ -1621,15 +1631,22 @@ function buildSpesa() {
     list.appendChild(h);
   }
 
-  // Raggruppa per categoria
-  var alcolici = SPESA.filter(function(s) { return s.fromMagazzino && s._categoria === 'alcolico'; });
+  // Raggruppa per categoria.
+  // IMPORTANTE: altroAuto richiede che _categoria sia una stringa nota diversa
+  // da 'alcolico'/'analcolico' (es. 'altro'). Voci con _categoria null/undefined
+  // dopo il repair sono orfane e vanno in una sezione separata, NON in "Altro",
+  // per evitare duplicati con le voci già classificate.
+  var alcolici  = SPESA.filter(function(s) { return s.fromMagazzino && s._categoria === 'alcolico'; });
   var analcolici = SPESA.filter(function(s) { return s.fromMagazzino && s._categoria === 'analcolico'; });
-  var altroAuto = SPESA.filter(function(s) { return s.fromMagazzino && s._categoria !== 'alcolico' && s._categoria !== 'analcolico'; });
-  var manual = SPESA.filter(function(s) { return !s.fromMagazzino; });
+  var altroAuto  = SPESA.filter(function(s) { return s.fromMagazzino && s._categoria && s._categoria !== 'alcolico' && s._categoria !== 'analcolico'; });
+  var orfane     = SPESA.filter(function(s) { return s.fromMagazzino && !s._categoria; });
+  var manual     = SPESA.filter(function(s) { return !s.fromMagazzino; });
 
   function catTotale(arr) {
     return arr.reduce(function(acc, item) {
-      return acc + ((!item.done && parseFloat(item.qtyNum) > 0 && parseFloat(item.costoUnitario) > 0) ? parseFloat(item.qtyNum) * parseFloat(item.costoUnitario) : 0);
+      var qN = parseFloat(item.qtyNum);
+      var cU = parseFloat(item.costoUnitario);
+      return acc + ((!item.done && qN > 0 && cU > 0) ? qN * cU : 0);
     }, 0);
   }
 
@@ -1644,6 +1661,10 @@ function buildSpesa() {
   if (altroAuto.length) {
     renderHeader('// ALTRO (AUTO)', '#555', catTotale(altroAuto));
     altroAuto.forEach(renderVoce);
+  }
+  if (orfane.length) {
+    renderHeader('// NON CLASSIFICATI', '#444', catTotale(orfane));
+    orfane.forEach(renderVoce);
   }
   if (manual.length) {
     renderHeader('// VOCI MANUALI', '#555', catTotale(manual));
@@ -2685,10 +2706,10 @@ function syncMagazzinoWithSpesa() {
         // Aggiorna voce esistente (anche se done, riattivala se la qty è cambiata)
         SPESA[existingIdx].nome          = item.nome;
         SPESA[existingIdx].qty           = qty + ' ' + item.unita;
-        SPESA[existingIdx].qtyNum        = qty;
+        SPESA[existingIdx].qtyNum        = qty;           // sempre numerico
         SPESA[existingIdx].costoUnitario = item.costoUnitario;
         SPESA[existingIdx].unita         = item.unita;
-        SPESA[existingIdx]._categoria    = item.categoria;
+        SPESA[existingIdx]._categoria    = item.categoria; // mai null
         SPESA[existingIdx].done          = false;
       } else {
         SPESA.push({
@@ -2697,10 +2718,10 @@ function syncMagazzinoWithSpesa() {
           magazzinoId:   item.id,
           nome:          item.nome,
           qty:           qty + ' ' + item.unita,
-          qtyNum:        qty,
+          qtyNum:        qty,           // sempre numerico
           costoUnitario: item.costoUnitario,
           unita:         item.unita,
-          _categoria:    item.categoria,
+          _categoria:    item.categoria, // mai null
           who:           '—',
           done:          false
         });
@@ -2823,8 +2844,9 @@ function openSpesaModal(editIdx) {
       // Preservare i campi automatici se la voce viene da magazzino
       fromMagazzino:  isEdit ? (item.fromMagazzino  || false) : false,
       magazzinoId:    isEdit ? (item.magazzinoId    || null)  : null,
-      qtyNum:        isEdit ? (item.qtyNum        || null)  : null,
-      costoUnitario: isEdit ? (item.costoUnitario || null)  : null,
+      qtyNum:         isEdit ? (item.qtyNum         || null)  : null,
+      costoUnitario:  isEdit ? (item.costoUnitario  || null)  : null,
+      _categoria:     isEdit ? (item._categoria     || null)  : null,
     };
     if (isEdit) { SPESA[editIdx] = obj; } else { SPESA.push(obj); }
     saveSpesa();
@@ -3166,11 +3188,6 @@ function openEditMembroModal(i) {
     '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
     '<input type="checkbox" id="mSospeso"' + (m.sospeso ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
     '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.sospeso ? '#cc2200' : '#888') + '">ACCOUNT SOSPESO</span>' +
-    '</label></div>' +
-    '<div style="margin-top:8px;padding:10px;border:1px solid ' + (m.canCreateProfile ? 'rgba(0,229,255,0.3)' : '#333') + ';border-radius:3px;background:' + (m.canCreateProfile ? 'rgba(0,229,255,0.05)' : 'transparent') + '">' +
-    '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
-    '<input type="checkbox" id="mCanCreateProfile"' + (m.canCreateProfile ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
-    '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.canCreateProfile ? 'var(--cyan)' : '#888') + '">PUÒ CREARE NUOVI PROFILI</span>' +
     '</label></div>';
 
   // Attiva bottoni foto membro
@@ -3220,12 +3237,10 @@ function openEditMembroModal(i) {
     var pw      = document.getElementById('mPwAcc').value.trim();
     var ruolo   = document.getElementById('mRuoloAcc').value;
     var sospeso = document.getElementById('mSospeso').checked;
-    var canCreateProfile = document.getElementById('mCanCreateProfile').checked;
     MEMBERS[i].name    = nome;
     MEMBERS[i].initial = nome.charAt(0).toUpperCase();
     MEMBERS[i].role    = ruolo;
     MEMBERS[i].sospeso = sospeso;
-    MEMBERS[i].canCreateProfile = canCreateProfile;
     if (pw) sha256(pw).then(function(h){ MEMBERS[i].password = h; saveMembers(); });
     addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : ''));
     saveMembers();
@@ -3583,9 +3598,10 @@ function buildAll() {
   buildSCal();
   buildBacheca();
   buildInfo();
-  buildSpesa();
+  buildMagazzino();   // prima del magazzino così syncMagazzinoWithSpesa ha i dati
+  syncMagazzinoWithSpesa(); // ricalcola lista spesa da magazzino aggiornato (prezzi, _categoria)
+  buildSpesa();       // ridisegna con dati già corretti
   buildLavori();
-  buildMagazzino();
   buildPagamenti();
   buildLog();
   buildConsigliati();
