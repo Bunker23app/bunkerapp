@@ -632,7 +632,7 @@
           <div class="section-head-line"></div>
         </div>
         <div id="membriList" style="margin-bottom:8px"></div>
-        <button class="add-btn" onclick="openNuovoMembroModal()">+ NUOVO MEMBRO</button>
+        <button class="add-btn" id="btnNuovoMembro" onclick="openNuovoMembroModal()">+ NUOVO MEMBRO</button>
       </div>
 
     </div>
@@ -733,13 +733,13 @@
         <button class="cfg-save-btn" style="border-color:#7a5a1a;color:#c8a84b" onclick="salvaConfiguraAiutante()">✓ SALVA VISTA AIUTANTE</button>
       </div>
 
-      <!-- SEZIONE: PERMESSI PAGINE PUBBLICHE -->
+      <!-- SEZIONE: PERMESSI PAGINE PUBBLICHE + WIDGET + UTENTI -->
       <div class="cfg-section" style="margin-top:20px;padding-top:16px;border-top:1px solid #1a1a1a">
         <div class="section-head" style="margin-bottom:6px">
-          <span class="section-head-title">🔒 PERMESSI PAGINE</span>
+          <span class="section-head-title">🔒 PERMESSI</span>
           <div class="section-head-line"></div>
         </div>
-        <div style="font-family:var(--mono);font-size:8px;color:#555;letter-spacing:2px;margin-bottom:10px">// CHI PUÒ MODIFICARE HOME / BACHECA / INFO</div>
+        <div style="font-family:var(--mono);font-size:8px;color:#555;letter-spacing:2px;margin-bottom:10px">// PAGINE · WIDGET CONTATORI · AGGIUNTA UTENTI</div>
         <div id="cfgPermPagine"></div>
         <button class="cfg-save-btn" style="margin-top:4px" onclick="salvaPermPagine()">✓ SALVA PERMESSI</button>
       </div>
