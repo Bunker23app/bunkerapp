@@ -294,11 +294,7 @@ hr, .divider {
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 90;
+  position: relative;
   box-shadow:
     0 2px 24px rgba(0,0,0,0.6),
     0 0 0 0 transparent,
@@ -482,13 +478,6 @@ hr, .divider {
   pointer-events: auto;
   position: relative;
   padding-bottom: calc(54px + env(safe-area-inset-bottom, 0px));
-}
-
-/* Padding top per le screen con topbar fissa */
-#screenHome.active,
-#screenBacheca.active,
-#screenInfo.active {
-  padding-top: 62px;
 }
 .screen.slide-out {
   opacity: 0;
@@ -1447,6 +1436,7 @@ hr, .divider {
 .login-bg {
   position: absolute; inset: 0;
   background: radial-gradient(ellipse at center, rgba(0,255,204,0.04) 0%, transparent 70%);
+  pointer-events: none;
 }
 .login-logo { text-align: center; margin-bottom: 32px; z-index: 1; }
 .login-logo-icon {
