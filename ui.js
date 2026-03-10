@@ -776,24 +776,14 @@ function renderCalDetail(day, ev, _isStaffView) {
       '</div>';
     var dow = new Date(ev.anno, ev.mese-1, day).getDay(); // 0=dom
     var dowIdx = dow === 0 ? 6 : dow - 1;
+    var activeMonth = _isStaffView ? sCalMonth : calMonth;
     var dateStr;
     if (ev.giornoFine && ev.meseFine && ev.annoFine) {
       dateStr = '🗓️ ' + ev.giorno + ' ' + MESI[ev.mese-1] + ' → ' + ev.giornoFine + ' ' + MESI[ev.meseFine-1] + (ev.annoFine !== ev.anno ? ' ' + ev.annoFine : '');
     } else {
-      dateStr = '🗓️ ' + GIORNI_FULL[dowIdx] + ' ' + day + ' ' + MESI[calMonth-1];
+      dateStr = '🗓️ ' + GIORNI_FULL[dowIdx] + ' ' + day + ' ' + MESI[activeMonth-1];
     }
     var meta = '<div class="cal-detail-meta">' + dateStr + ' · ORE ' + ev.ora + '</div>';
-    if (_isStaffView) {
-      var dowS = new Date(ev.anno, ev.mese-1, day).getDay();
-      var dowIdxS = dowS === 0 ? 6 : dowS - 1;
-      var dateStrS;
-      if (ev.giornoFine && ev.meseFine && ev.annoFine) {
-        dateStrS = '🗓️ ' + ev.giorno + ' ' + MESI[ev.mese-1] + ' → ' + ev.giornoFine + ' ' + MESI[ev.meseFine-1] + (ev.annoFine !== ev.anno ? ' ' + ev.annoFine : '');
-      } else {
-        dateStrS = '🗓️ ' + GIORNI_FULL[dowIdxS] + ' ' + day + ' ' + MESI[sCalMonth-1];
-      }
-      meta = '<div class="cal-detail-meta">' + dateStrS + ' · ORE ' + ev.ora + '</div>';
-    }
     var desc = ev.desc ? '<div class="cal-detail-desc">ℹ️ ' + ev.desc + '</div>' : '';
     var extra = '';
     if (ev.luogo) extra += '<div class="cal-detail-desc">📍 ' + ev.luogo + '</div>';
@@ -1198,7 +1188,6 @@ function setStarVal(v) {
   });
 }
 
-// sugInput listener unificato nel DOMContentLoaded principale (vedi INIT)
 
 function inviaSuggerimento() {
   var ta = document.getElementById('sugInput');
@@ -1381,8 +1370,6 @@ function inviaValutazioneEvento(evId) {
   delete _evStarVals[evId];
   addLog('ha valutato un evento');
   saveConfig();
-  // ri-renderizza il dettaglio
-  var isStaffCal = document.getElementById('sCalDetail') && document.getElementById('sCalDetail').children.length > 0;
   renderCalDetail(calSel, EVENTI.find(function(e){ return e.id === evId; }) || null, false);
 }
 
@@ -1855,10 +1842,6 @@ function openLavoriModal(editIdx) {
 
 // PAGAMENTI
 // ════════════════════════════════════════
-function getPagamentoByName(name) {
-  return PAGAMENTI.find(function(p){ return p.name === name; });
-}
-
 function buildPagamenti() {
   var list = document.getElementById('pagamentiList');
   if (!list) return;
@@ -1900,7 +1883,7 @@ function buildPagamenti() {
 
     // ── Body (collassabile) ──
     var body = document.createElement('div');
-    body.style.cssText = 'display:none;border-top:1px solid #1a1a1a;padding:10px 14px;display:flex;flex-direction:column;gap:8px;';
+    body.style.cssText = 'border-top:1px solid #1a1a1a;padding:10px 14px;display:flex;flex-direction:column;gap:8px;';
     body.style.display = 'none';
 
     var btns = [
@@ -2053,28 +2036,6 @@ function modificaSaldo(i) {
   openModal();
 }
 
-function autoAccredito(i) {
-  var p = PAGAMENTI[i];
-  $id('modalTitle').textContent = 'ACCREDITA · ' + p.name.toUpperCase();
-  $id('modalBody').innerHTML =
-    '<div style="font-family:var(--mono);font-size:9px;color:#888;letter-spacing:2px;margin-bottom:12px">SALDO ATTUALE: ' + (p.saldo >= 0 ? '+' : '') + p.saldo.toFixed(2) + '€</div>' +
-    '<div><label class="modal-label">// IMPORTO (€)</label><input class="modal-input" id="mvImporto" type="number" step="0.01" min="0.01" placeholder="es. 20.00"/></div>' +
-    '<div><label class="modal-label">// NOTA</label><input class="modal-input" id="mvNota" placeholder="es. Anticipato spesa, rimborso spettante..."/></div>';
-  window._modalCb = function() {
-    var importo = parseFloat($id('mvImporto').value) || 0;
-    if (importo <= 0) return;
-    var nota = $id('mvNota').value.trim() || 'auto-accredito';
-    var data = new Date().toISOString().slice(0,10);
-    PAGAMENTI[i].saldo = parseFloat((PAGAMENTI[i].saldo + importo).toFixed(2));
-    PAGAMENTI[i].movimenti.push({ data: data, importo: importo, tipo: 'credito', nota: nota });
-    addLog('auto-accredito: ' + p.name + ' +' + importo + '€ — ' + nota);
-    closeModal();
-    buildPagamenti();
-    savePagamenti();
-  };
-  openModal();
-}
-
 function autoAddebito(i) {
   var p = PAGAMENTI[i];
   $id('modalTitle').textContent = 'ADDEBITA · ' + p.name.toUpperCase();
@@ -2211,10 +2172,6 @@ function updateDash() {
   // Log: solo non visti
   var wll = document.getElementById('wLog');
   if (wll) wll.textContent = _unreadLog;
-
-  // Magazzino: sotto minimo
-  var wg = document.getElementById('wMagazzino');
-  if (wg) wg.textContent = MAGAZZINO.filter(function(g){return g.attuale < g.minimo;}).length;
 }
 
 // ════════════════════════════════════════
@@ -2788,7 +2745,6 @@ function syncMagazzinoWithSpesa() {
   // syncMagazzinoWithSpesa() modifica solo i dati in SPESA.
 }
 
-// checkMagazzinoAndAddToSpesa è stato unificato con syncMagazzinoWithSpesa (vedere chiamate)
 
 function deleteMagazzino(i) {
   var item = MAGAZZINO[i];
@@ -3590,66 +3546,6 @@ function buildConsigliati() {
     '</div>';
 
   list.appendChild(card);
-}
-function deleteConsigliato(i) {
-  showConfirm('Eliminare "' + CONSIGLIATI[i].nome + '"?', function() {
-    addLog('rimosso evento consigliato: ' + CONSIGLIATI[i].nome);
-    CONSIGLIATI.splice(i, 1);
-    saveConfig();
-    buildConsigliati();
-    showToast(T_DELETED, 'error');
-  });
-}
-
-function openConsigliatiModal(editIdx) {
-  var isEdit = editIdx !== undefined && editIdx !== null;
-  var item = isEdit ? CONSIGLIATI[editIdx] : null;
-  $id('modalTitle').textContent = isEdit ? 'MODIFICA CONSIGLIATO' : 'NUOVO EVENTO CONSIGLIATO';
-  $id('modalBody').innerHTML =
-    '<div><label class="modal-label">// NOME EVENTO</label>' +
-    '<input class="modal-input" id="cNome" value="' + (isEdit ? item.nome : '') + '" placeholder="es. TECHNO FEST 2026"/></div>' +
-    '<div><label class="modal-label">// DATA</label>' +
-    '<input class="modal-input" id="cData" value="' + (isEdit && item.data ? item.data : '') + '" placeholder="es. SAB 15 MAR · 22:00"/></div>' +
-    '<div><label class="modal-label">// LUOGO</label>' +
-    '<input class="modal-input" id="cLuogo" value="' + (isEdit && item.luogo ? item.luogo : '') + '" placeholder="es. Warehouse, Milano"/></div>' +
-    '<div><label class="modal-label">// DESCRIZIONE</label>' +
-    '<textarea class="modal-input" id="cDesc" rows="3" style="resize:none">' + (isEdit && item.desc ? item.desc : '') + '</textarea></div>' +
-    '<div><label class="modal-label">// LOCANDINA</label>' +
-    '<input type="file" id="cLocandinaFile" accept="image/*" style="display:none"/>' +
-    '<button onclick="document.getElementById(\'cLocandinaFile\').click()" style="width:100%;padding:10px;background:transparent;border:1px dashed #2a2a2a;color:#555;font-family:var(--mono);font-size:9px;letter-spacing:2px;cursor:pointer;border-radius:2px">📷 CARICA LOCANDINA</button>' +
-    '<div id="cLocPrev" style="margin-top:6px">' + (isEdit && item.locandina ? '<div class="loc-img-wrap" onclick="openLightbox(this.querySelector(\'img\').src)"><img src="' + item.locandina + '" style="width:100%;border-radius:3px;max-height:160px;object-fit:contain"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>' : '') + '</div></div>';
-
-  setTimeout(function() {
-    var fi = document.getElementById('cLocandinaFile');
-    if (fi) fi.onchange = function() {
-      var file = this.files[0];
-      if (!file) return;
-      compressLocandina(file, function(b64) {
-        var prev = document.getElementById('cLocPrev');
-        if (prev) prev.innerHTML = '<div class="loc-img-wrap" onclick="openLightbox(this.querySelector(\'img\').src)"><img src="' + b64 + '" style="width:100%;border-radius:3px;max-height:160px;object-fit:contain"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>';
-        fi._b64 = b64;
-      });
-    };
-  }, 50);
-
-  window._modalCb = function() {
-    var fi = document.getElementById('cLocandinaFile');
-    var obj = {
-      nome:      document.getElementById('cNome').value.trim(),
-      data:      document.getElementById('cData').value.trim(),
-      luogo:     document.getElementById('cLuogo').value.trim(),
-      desc:      document.getElementById('cDesc').value.trim(),
-      locandina: (fi && fi._b64) ? fi._b64 : (isEdit ? item.locandina : null),
-    };
-    if (!obj.nome) return;
-    if (isEdit) { CONSIGLIATI[editIdx] = obj; } else { CONSIGLIATI.push(obj); }
-    saveConfig();
-    addLog((isEdit ? 'modificato' : 'aggiunto') + ' evento consigliato: ' + obj.nome);
-    buildConsigliati();
-    showToast(T_SAVED, 'success');
-    closeModal();
-  };
-  openModal();
 }
 
 /** Ricostruisce tutta la UI */
