@@ -707,6 +707,9 @@ var _lavoriChannel    = null;
 var _realtimeActive   = false;
 // Set di "author|testo" dei messaggi inviati da noi, per bloccare il realtime echo
 var _pendingChatKeys = {};
+// Guard per evitare doppio incremento magazzino: quando il client mittente
+// ha già aggiornato localmente in confermaAcquisto, blocca il realtime DELETE su spesa
+var _pendingMagazzinoIds = {};
 
 // ── STOP REALTIME — chiude tutti i canali aperti ─────────────────────────────
 function stopRealtime() {
@@ -950,6 +953,24 @@ function initRealtime() {
       var old = payload.old;
       if (old && old.id) {
         var idx = SPESA.findIndex(function(x){ return x.id === old.id; });
+        // Se la voce era collegata al magazzino e marcata come acquistata,
+        // aggiorna la quantità del magazzino sul client che riceve il realtime.
+        // (Il client che ha confermato l'acquisto lo ha già fatto localmente.)
+        if (old.from_magazzino && old.magazzino_id && old.done) {
+          var qtyAcquistata = old.qty ? parseFloat(old.qty) : 0;
+          if (qtyAcquistata > 0) {
+            var gIdx = MAGAZZINO.findIndex(function(m){ return m.id === old.magazzino_id; });
+            if (gIdx !== -1 && _magazzinoChannel) {
+              // Aggiorna solo se questo client NON è il mittente (il mittente ha già aggiornato in confermaAcquisto)
+              // Usiamo _pendingMagazzinoIds come guard per evitare doppio incremento
+              var guardKey = 'mz-' + old.magazzino_id;
+              if (!_pendingMagazzinoIds[guardKey]) {
+                MAGAZZINO[gIdx].attuale = MAGAZZINO[gIdx].attuale + qtyAcquistata;
+                buildMagazzino();
+              }
+            }
+          }
+        }
         if (idx >= 0) SPESA.splice(idx, 1);
         buildSpesa(); updateDash();
       } else {

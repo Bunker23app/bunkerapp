@@ -1747,6 +1747,11 @@ function confermaAcquisto(i) {
       var vecchio = MAGAZZINO[gIdx].attuale;
       MAGAZZINO[gIdx].attuale = vecchio + qtyAcquistata;
       addLog('magazzino aggiornato: ' + MAGAZZINO[gIdx].nome + ' da ' + vecchio + ' a ' + MAGAZZINO[gIdx].attuale + ' ' + MAGAZZINO[gIdx].unita);
+      // Imposta guard: questo client ha già aggiornato il magazzino localmente,
+      // il realtime DELETE su spesa non deve fare un secondo incremento.
+      var guardKey = 'mz-' + item.magazzinoId;
+      _pendingMagazzinoIds[guardKey] = true;
+      setTimeout(function() { delete _pendingMagazzinoIds[guardKey]; }, 5000);
       // Ricalcola lista spesa da magazzino
       syncMagazzinoWithSpesa();
       buildMagazzino();
@@ -2697,10 +2702,10 @@ function updateMagazzinoById(itemId, newQty) {
 
   syncMagazzinoWithSpesa();
   updateDash();
-  // NOTA: saveMagazzino() e saveSpesa() NON vengono chiamati qui.
-  // buildMagazzino() è chiamato anche da realtime e da loadAllData:
-  // salvare qui causerebbe il ciclo DELETE→INSERT→realtime→sync→save.
-  // Il salvataggio avviene solo nelle funzioni di modifica utente (updateMagazzinoById, stepMagazzino, ecc.)
+  // Salva su Supabase: questa funzione è il punto di ingresso delle modifiche utente
+  // (stepMagazzino, onchange input). Il debounce evita scritture eccessive.
+  saveMagazzino();
+  saveSpesa();
 }
 
 function syncMagazzinoWithSpesa() {
