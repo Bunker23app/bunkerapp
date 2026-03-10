@@ -513,7 +513,15 @@ hr, .divider {
   opacity: 0.20;
   filter: hue-rotate(160deg) saturate(0.5);
 }
-.screen > *:not(.logo-bg) { position: relative; z-index: 2; }
+/* logo-bg non è più dentro .screen quindi questa regola non serve più */
+.screen > * { position: relative; z-index: 2; }
+
+/* Nasconde il logo-bg globale sulle schermate senza sfondo */
+.phone:has(#screenSplash.active) #globalLogoBg,
+.phone:has(#screenLogin.active) #globalLogoBg,
+.phone:has(#screenStaff.active) #globalLogoBg {
+  display: none;
+}
 
 /* ══════════════════════════════════════
    TOAST
