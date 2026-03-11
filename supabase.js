@@ -98,6 +98,17 @@ function saveMembers() {
       for (var i = 0; i < rows.length; i++) {
         var res = await getSupabase().from('members').upsert(rows[i], { onConflict: 'name' });
         if (res.error) console.warn('[sb.members]', res.error.message);
+        // Aggiorna ruolo e sospensione nelle push_subscriptions
+        var m = MEMBERS[i];
+        if (m && m.name) {
+          if (m.sospeso) {
+            // Utente sospeso: elimina tutte le sue subscription
+            await getSupabase().from('push_subscriptions').delete().eq('user_name', m.name);
+          } else {
+            // Aggiorna il ruolo nelle subscription esistenti
+            await getSupabase().from('push_subscriptions').update({ user_role: m.role || 'utente' }).eq('user_name', m.name);
+          }
+        }
       }
     } catch(e) { console.warn('[sb.members]', e.message); }
   }, 600);
