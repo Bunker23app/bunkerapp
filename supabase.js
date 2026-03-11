@@ -128,6 +128,8 @@ function saveEventi() {
           locandina: e.locandina || null,
           pubblico: (e.tipo === 'invito' || e.tipo === 'consigliato'),
           created_by: currentUser ? currentUser.name : null,
+          notifica_nuovo: e.notifica_nuovo || false,
+          notifica_reminder: e.notifica_reminder || false,
         };
       });
       // Upsert: aggiorna se esiste, inserisce se non esiste
@@ -588,6 +590,8 @@ async function loadAllData() {
           locandina: e.locandina || null,
           ora_fine: e.ora_fine || null,
           terminato: e.terminato || false,
+          notifica_nuovo: e.notifica_nuovo || false,
+          notifica_reminder: e.notifica_reminder || false,
           giornoFine: null, meseFine: null, annoFine: null,
         };
         if (e.data_fine) {
@@ -925,6 +929,8 @@ function initRealtime() {
       locandina: e.locandina || null,
       ora_fine: e.ora_fine || null,
       terminato: e.terminato || false,
+      notifica_nuovo: e.notifica_nuovo || false,
+      notifica_reminder: e.notifica_reminder || false,
       giornoFine: null, meseFine: null, annoFine: null,
     };
     if (e.data_fine) { var df=new Date(e.data_fine); obj.giornoFine=df.getUTCDate(); obj.meseFine=df.getUTCMonth()+1; obj.annoFine=df.getUTCFullYear(); }

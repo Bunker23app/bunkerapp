@@ -2246,7 +2246,18 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
     '<div><label class="modal-label">// LOCANDINA</label>' +
     '<input type="file" id="mLocandinaFile" accept="image/*" style="display:none"/>' +
     '<button onclick="document.getElementById(\'mLocandinaFile\').click()" style="width:100%;padding:10px;background:transparent;border:1px dashed #2a2a2a;color:#555;font-family:var(--mono);font-size:9px;letter-spacing:2px;cursor:pointer;border-radius:2px">📷 CARICA LOCANDINA</button>' +
-    '<div id="mLocandinaPreview" style="margin-top:6px">' + (isEdit && ev.locandina ? '<div class="loc-img-wrap" onclick="openLightbox(this.querySelector(\'img\').src)"><img src="' + ev.locandina + '" style="width:100%;border-radius:3px;max-height:160px;object-fit:contain"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>' : '') + '</div></div>';
+    '<div id="mLocandinaPreview" style="margin-top:6px">' + (isEdit && ev.locandina ? '<div class="loc-img-wrap" onclick="openLightbox(this.querySelector(\'img\').src)"><img src="' + ev.locandina + '" style="width:100%;border-radius:3px;max-height:160px;object-fit:contain"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>' : '') + '</div></div>' +
+    '<div style="border-top:1px solid #1a1a1a;margin:10px 0 6px;padding-top:10px">' +
+      '<div style="font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#444;margin-bottom:8px">// 🔔 NOTIFICHE</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;padding:8px 0">' +
+        '<input type="checkbox" id="mNotificaNuovo" style="width:16px;height:16px;accent-color:#cc2200;cursor:pointer;flex-shrink:0"' + (isEdit && ev.notifica_nuovo ? ' checked' : (!isEdit ? ' checked' : '')) + '/>' +
+        '<label for="mNotificaNuovo" style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#888;cursor:pointer">NOTIFICA NUOVO EVENTO <span style="color:#555;font-size:8px">(invia push alla pubblicazione)</span></label>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;padding:8px 0">' +
+        '<input type="checkbox" id="mNotificaReminder" style="width:16px;height:16px;accent-color:#cc2200;cursor:pointer;flex-shrink:0"' + (isEdit && ev.notifica_reminder ? ' checked' : (!isEdit ? ' checked' : '')) + '/>' +
+        '<label for="mNotificaReminder" style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#888;cursor:pointer">REMINDER 5H PRIMA <span style="color:#555;font-size:8px">(invia push 5 ore prima dell\'inizio)</span></label>' +
+      '</div>' +
+    '</div>';
 
   // Attiva input file locandina dopo che il modal è nel DOM
   setTimeout(function() {
@@ -2332,10 +2343,15 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       note: document.getElementById('mNote').value.trim(),
       luogo: document.getElementById('mLuogo').value.trim(),
       locandina: (locandinaFile && locandinaFile._b64) ? locandinaFile._b64 : (window._locandinaCancellata ? null : (isEdit ? ev.locandina : null)),
+      notifica_nuovo: document.getElementById('mNotificaNuovo') ? document.getElementById('mNotificaNuovo').checked : false,
+      notifica_reminder: document.getElementById('mNotificaReminder') ? document.getElementById('mNotificaReminder').checked : false,
     };
     if (isEdit) { EVENTI[editIdx] = obj; } else { EVENTI.push(obj); }
     saveEventi();
     addLog((isEdit ? 'modificato' : 'aggiunto') + ' evento: ' + obj.nome);
+    // Notifiche push
+    if (!isEdit && typeof notificaNuovoEvento === 'function') notificaNuovoEvento(obj);
+    if (typeof pianificaReminderEvento === 'function') pianificaReminderEvento(obj);
     buildAll();
     showToast('// EVENTO ' + (isEdit ? 'AGGIORNATO' : 'AGGIUNTO') + ' ✓', 'success');
     closeModal();
@@ -3699,6 +3715,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (typeof requestPushPermissionAndRegister === 'function') {
         requestPushPermissionAndRegister();
+      }
+      if (typeof ripianificaTuttiReminder === 'function') {
+        ripianificaTuttiReminder();
       }
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
