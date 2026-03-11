@@ -804,7 +804,7 @@
 // Service Worker per PWA + Push Notifications
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/bunkerapp/sw.js')
       .then(function(reg) { console.log('[SW] registrato:', reg.scope); })
       .catch(function(err) { console.warn('[SW] errore registrazione:', err); });
   });
