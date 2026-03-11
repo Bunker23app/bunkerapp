@@ -10,9 +10,7 @@ const MEMBERS = [
   { name:'Alex',   initial:'A', color:'#2a6b6b', password:'sha256:4135aa9dc1b842a653dea846903ddb95bfb8c5a10c504a7fa16e10bc31d1fdf0', role:'staff' },
   { name:'Ricia',  initial:'R', color:'#5a5a1a', password:'sha256:766ceea5fcdcc176646d2fcafd1dd08784bf17f38c7eee68438e06505ff6a9b8', role:'staff' },
   // Utenti registrati (area pubblica completa)
-  { name:'Utente1',  initial:'U', color:'#444466', password:'sha256:9cdee5050fb57181e54646f487753dde73bc8e8c73843de92d01427420c64c23', role:'utente' },
-  { name:'Utente2',  initial:'U', color:'#446644', password:'sha256:df21b1245419763295b2d582072ada296c09b458227f6176d36634c88c179a91', role:'utente' },
-  { name:'Utente3',  initial:'U', color:'#664444', password:'sha256:d7843fc12f2260537ce74087e09f296cab80c1b4b1e8c5eb2d1b6250b5f5ce51', role:'utente' },
+  // [nessun utente di default — creare gli utenti dall'app]
 ];
 
 // Livello accesso corrente: null=ospite, 'utente'=registrato, 'staff'/'admin'=staff
