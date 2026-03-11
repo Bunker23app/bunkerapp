@@ -800,21 +800,12 @@
 <script src="configuratore.js"></script>
 <script src="supabase.js"></script>
 <script>
-// Service Worker per PWA
+// Service Worker per PWA + Push Notifications
 if ('serviceWorker' in navigator) {
-  var swCode = `
-self.addEventListener('install', function(e) { self.skipWaiting(); });
-self.addEventListener('activate', function(e) { e.waitUntil(clients.claim()); });
-self.addEventListener('fetch', function(e) {
-  e.respondWith(fetch(e.request).catch(function() { return caches.match(e.request); }));
-});
-`;
-  var blob = new Blob([swCode], {type: 'text/javascript'});
-  var swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl).then(function() {
-    console.log('SW registrato');
-  }).catch(function(e) {
-    console.warn('SW non registrato:', e);
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js')
+      .then(function(reg) { console.log('[SW] registrato:', reg.scope); })
+      .catch(function(err) { console.warn('[SW] errore registrazione:', err); });
   });
 }
 </script>
