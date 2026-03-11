@@ -1334,28 +1334,11 @@ async function registerPushSubscription() {
     var reg = await navigator.serviceWorker.ready;
     var existing = await reg.pushManager.getSubscription();
     if (existing) {
-      // Controlla se la subscription usa la chiave VAPID corretta
-      // confrontando l'applicationServerKey
-      var existingKeyBase64 = null;
-      try {
-        var keyBytes = existing.options && existing.options.applicationServerKey;
-        if (keyBytes) {
-          existingKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(keyBytes)))
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        }
-      } catch(e2) {}
-      var currentKey = VAPID_PUBLIC_KEY.replace(/=+$/, '');
-      if (existingKeyBase64 && existingKeyBase64 !== currentKey) {
-        // Chiave cambiata: cancella vecchia subscription e ricrea
-        console.log('[push] chiave VAPID cambiata, rinnovo subscription...');
-        await existing.unsubscribe();
-        await getSupabase().from('push_subscriptions').delete().eq('endpoint', existing.endpoint);
-      } else {
-        // Chiave ok: aggiorna solo il ruolo nel DB
-        await _savePushSubscription(existing);
-        return;
-      }
+      // Già registrato: aggiorna solo ruolo nel DB, nessuna notifica
+      await _savePushSubscription(existing);
+      return;
     }
+    // Nuova subscription
     var sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
