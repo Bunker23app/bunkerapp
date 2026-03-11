@@ -1283,3 +1283,81 @@ addLog = async function(azione) {
     await saveLogEntry({ member: currentUser, azione: azione });
   }
 };
+
+// ══════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS — registrazione service worker e subscription
+// ══════════════════════════════════════════════════════
+
+var VAPID_PUBLIC_KEY = 'IN2B8iG0UDkIgA_r0wdMm5spcO2_2o6EqjpdHzCnUOc9Kl6Po3pp7Y3aVN1SsGtqqEn27E1xyqcwMqXlCzwnlw';
+
+function _urlBase64ToUint8Array(base64String) {
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var rawData = window.atob(base64);
+  var outputArray = new Uint8Array(rawData.length);
+  for (var i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function registerPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('[push] non supportato da questo browser');
+    return;
+  }
+  if (!currentUser) {
+    console.log('[push] nessun utente loggato, skip registrazione push');
+    return;
+  }
+  try {
+    var reg = await navigator.serviceWorker.ready;
+    var existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      // Già registrato: aggiorna il ruolo nel DB per sicurezza
+      await _savePushSubscription(existing);
+      return;
+    }
+    var sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    await _savePushSubscription(sub);
+    console.log('[push] subscription registrata con successo');
+  } catch(e) {
+    console.warn('[push] errore registrazione:', e.message);
+  }
+}
+
+async function _savePushSubscription(sub) {
+  if (!_sbReady || !currentUser) return;
+  try {
+    var keys = sub.toJSON().keys || {};
+    var row = {
+      user_name: currentUser.name,
+      user_role: currentUser.role || 'utente',
+      endpoint: sub.endpoint,
+      p256dh: keys.p256dh || '',
+      auth: keys.auth || '',
+    };
+    var res = await getSupabase()
+      .from('push_subscriptions')
+      .upsert(row, { onConflict: 'endpoint' });
+    if (res.error) console.warn('[push] errore salvataggio subscription:', res.error.message);
+  } catch(e) {
+    console.warn('[push] errore _savePushSubscription:', e.message);
+  }
+}
+
+async function requestPushPermissionAndRegister() {
+  if (!('Notification' in window)) return;
+  var perm = Notification.permission;
+  if (perm === 'granted') {
+    await registerPushSubscription();
+  } else if (perm === 'default') {
+    var result = await Notification.requestPermission();
+    if (result === 'granted') {
+      await registerPushSubscription();
+    }
+  }
+}
