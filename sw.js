@@ -6,7 +6,7 @@ self.addEventListener('push', function(event) {
   var options = {
     body: data.body || '',
     vibrate: [200, 100, 200],
-    data: { url: data.url || '/' }
+    data: { url: data.url || 'https://bunker23app.github.io/bunkerapp/' }
   };
 
   event.waitUntil(
