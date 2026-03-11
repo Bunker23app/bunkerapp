@@ -1,12 +1,10 @@
 self.addEventListener('push', function(event) {
   if (!event.data) return;
-
+  
   var data = event.data.json();
   var title = data.title || 'BUNKER23';
   var options = {
     body: data.body || '',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
     vibrate: [200, 100, 200],
     data: { url: data.url || '/' }
   };
