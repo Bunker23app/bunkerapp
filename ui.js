@@ -1858,6 +1858,7 @@ function buildPagamenti() {
     }
     if (canEdit) {
       btns.push({ label:'✏ MODIFICA SALDO', color:'transparent', border:'#334488', txtColor:'#6688cc', action: function(){ modificaSaldo(i); } });
+      btns.push({ label:'✕ RIMUOVI UTENTE', color:'transparent', border:'#660000', txtColor:'#993333', action: function(){ rimuoviUtentePagamenti(i); } });
     }
     if (canPay) {
       btns.push({ label:'✓ REGISTRA PAGAMENTO', color:'transparent', border:'#2a9a2a', txtColor:'#2a9a2a', action: function(){ registraPagamento(i); } });
@@ -1886,8 +1887,55 @@ function buildPagamenti() {
   // Aggiorna widget dashboard
   var wp = document.getElementById('wPagamenti');
   if (wp) wp.textContent = inDebito;
+
+  // Pulsante AGGIUNGI UTENTE (solo admin)
+  if (isAdmin()) {
+    var addBtn = document.createElement('button');
+    addBtn.textContent = '+ AGGIUNGI UTENTE';
+    addBtn.style.cssText = 'width:100%;margin-top:8px;padding:12px;background:transparent;border:1px solid rgba(0,255,204,0.3);color:var(--cyan);font-family:var(--mono);font-size:10px;letter-spacing:2px;border-radius:2px;cursor:pointer;';
+    addBtn.addEventListener('click', function() { aggiungiUtentePagamenti(); });
+    list.appendChild(addBtn);
+  }
 }
 
+
+function aggiungiUtentePagamenti() {
+  $id('modalTitle').textContent = 'AGGIUNGI UTENTE · PAGAMENTI';
+  $id('modalBody').innerHTML =
+    '<div><label class="modal-label">// NOME UTENTE</label>' +
+    '<input class="modal-input" id="newPagNome" placeholder="es. Mario" maxlength="30"/></div>';
+  window._modalCb = function() {
+    var nome = $id('newPagNome').value.trim();
+    if (!nome) { showToast('// NOME OBBLIGATORIO', 'error'); return; }
+    var exists = PAGAMENTI.find(function(p) { return p.name.toLowerCase() === nome.toLowerCase(); });
+    if (exists) { showToast('// UTENTE GIÀ PRESENTE', 'error'); return; }
+    PAGAMENTI.push({ name: nome, saldo: 0, movimenti: [] });
+    savePagamenti();
+    buildPagamenti();
+    closeModal();
+    showToast('// UTENTE AGGIUNTO: ' + nome.toUpperCase(), 'success');
+    addLog('aggiunto utente pagamenti: ' + nome);
+  };
+  openModal();
+}
+
+function rimuoviUtentePagamenti(i) {
+  var p = PAGAMENTI[i];
+  showConfirm(
+    'Rimuovere ' + p.name.toUpperCase() + ' dai pagamenti? Tutti i movimenti andranno persi.',
+    async function() {
+      try {
+        await getSupabase().from('pagamenti').delete().eq('member_name', p.name);
+      } catch(e) { console.warn('[rimuovi pagamento]', e.message); }
+      PAGAMENTI.splice(i, 1);
+      buildPagamenti();
+      showToast('// UTENTE RIMOSSO: ' + p.name.toUpperCase(), 'success');
+      addLog('rimosso utente pagamenti: ' + p.name);
+    },
+    'RIMUOVI UTENTE',
+    'RIMUOVI'
+  );
+}
 
 function apriDettaglioPagamento(i) {
   var p = PAGAMENTI[i];
