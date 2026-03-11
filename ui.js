@@ -2350,7 +2350,15 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
     saveEventi();
     addLog((isEdit ? 'modificato' : 'aggiunto') + ' evento: ' + obj.nome);
     // Notifiche push
-    if (!isEdit && typeof notificaNuovoEvento === 'function') notificaNuovoEvento(obj);
+    if (typeof notificaNuovoEvento === 'function') {
+      if (!isEdit) {
+        // Evento nuovo: invia sempre se notifica_nuovo è attivo
+        notificaNuovoEvento(obj);
+      } else if (obj.notifica_nuovo && !ev.notifica_nuovo) {
+        // Evento modificato: invia solo se notifica_nuovo è stato appena abilitato
+        notificaNuovoEvento(obj);
+      }
+    }
     if (typeof pianificaReminderEvento === 'function') pianificaReminderEvento(obj);
     buildAll();
     showToast('// EVENTO ' + (isEdit ? 'AGGIORNATO' : 'AGGIUNTO') + ' ✓', 'success');
