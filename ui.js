@@ -469,9 +469,11 @@ async function doLogin() {
     showTab('dashboard');
     // Staff/admin usano realtime — ferma polling e inizializza canali
     if (typeof onUserLogin === 'function') onUserLogin();
+    if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
   } else {
     // Utente normale (livelli 1-3): avvia polling se non già attivo
     if (typeof onUserLogin === 'function') onUserLogin();
+    if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
   }
   updatePageCfgBtns();
   applyPageSections('home');
@@ -3694,6 +3696,9 @@ document.addEventListener('DOMContentLoaded', function() {
       // onUserLogin() gestisce automaticamente entrambi i casi.
       if (typeof onUserLogin === 'function') {
         onUserLogin();
+      }
+      if (typeof requestPushPermissionAndRegister === 'function') {
+        requestPushPermissionAndRegister();
       }
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
