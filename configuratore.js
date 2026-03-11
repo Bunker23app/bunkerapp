@@ -903,7 +903,11 @@ function notificaNuovoEvento(evento) {
 }
 
 // Pianifica il reminder 5h prima (chiama inviaNotificaPush al momento giusto)
-// Versione semplificata: controlla ogni minuto se è ora di mandare il reminder
+// NOTA: questo setTimeout è un fallback per sessioni browser aperte a lungo.
+// Il meccanismo principale e affidabile è la Edge Function "send-reminders"
+// chiamata ogni 15 minuti da cron-job.org — se il browser viene chiuso o
+// ricaricato, il setTimeout si perde e il reminder non parte. Con cron-job.org
+// il reminder viene inviato indipendentemente dallo stato del browser.
 var _reminderTimers = {};
 
 function pianificaReminderEvento(evento) {
