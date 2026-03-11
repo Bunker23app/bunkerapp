@@ -277,15 +277,19 @@ function openProfiloUtente() {
       if (!(await pwMatch(att, currentUser.password))) { errEl.textContent = '// PASSWORD ATTUALE ERRATA'; return; }
       if (nuova.length < 4) { errEl.textContent = '// PASSWORD TROPPO CORTA (min 4)'; return; }
       if (nuova !== conf) { errEl.textContent = '// LE PASSWORD NON COINCIDONO'; return; }
-      // Controlla se la password è già usata da un altro membro
       var nuovaHash = await sha256(nuova);
-      for (var mi = 0; mi < MEMBERS.length; mi++) {
-        if (MEMBERS[mi].name !== currentUser.name && MEMBERS[mi].password === nuovaHash) {
-          errEl.textContent = '// PASSWORD NON DISPONIBILE — SCEGLINE UN\'ALTRA'; return;
-        }
-      }
       currentUser.password = nuovaHash;
       addLog('ha cambiato la password');
+    }
+    // Controlla se il nome è già usato da un altro membro (case-insensitive)
+    if (nome.toLowerCase() !== currentUser.name.toLowerCase()) {
+      for (var mi = 0; mi < MEMBERS.length; mi++) {
+        if (MEMBERS[mi].name !== currentUser.name && MEMBERS[mi].name.toLowerCase() === nome.toLowerCase()) {
+          var errEl2 = document.getElementById('utePwError');
+          if (errEl2) errEl2.textContent = '// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO';
+          return;
+        }
+      }
     }
     currentUser.name = nome;
     currentUser.initial = nome.charAt(0).toUpperCase();
@@ -428,15 +432,22 @@ async function migratePasswords() {
 }
 
 async function doLogin() {
+  var nomeInput = document.getElementById('loginNome') ? document.getElementById('loginNome').value.trim() : '';
   var pw = document.getElementById('loginPw').value.trim();
   var err = document.getElementById('loginErr');
+  if (!nomeInput) { err.textContent = '// INSERISCI IL NOME UTENTE'; return; }
   if (!pw) { err.textContent = '// INSERISCI LA PASSWORD'; return; }
-  // Cerca il membro con password corrispondente (hash o plain durante migrazione)
+  // Cerca il membro per nome (case-insensitive)
   var member = null;
   for (var i = 0; i < MEMBERS.length; i++) {
-    if (await pwMatch(pw, MEMBERS[i].password)) { member = MEMBERS[i]; break; }
+    if (MEMBERS[i].name.toLowerCase() === nomeInput.toLowerCase()) {
+      member = MEMBERS[i];
+      break;
+    }
   }
-  if (!member) { err.textContent = '// PASSWORD ERRATA'; return; }
+  if (!member) { err.textContent = '// NOME UTENTE NON TROVATO'; return; }
+  // Verifica la password
+  if (!(await pwMatch(pw, member.password))) { err.textContent = '// PASSWORD ERRATA'; return; }
   if (member.sospeso) { err.textContent = '// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE'; return; }
   currentUser = member;
   // Salva sessione persistente
@@ -484,13 +495,14 @@ function goToLogin() {
   var t = document.getElementById('loginTitle');
   var s = document.getElementById('loginSub');
   if (t) t.textContent = 'ACCESSO';
-  if (s) s.textContent = 'INSERISCI LA PASSWORD';
+  if (s) s.textContent = 'NOME UTENTE E PASSWORD';
   navigate('screenLogin');
 }
 
 function exitToSplash() {
   guestMode = false;
   currentUser = null;
+  if (document.getElementById('loginNome')) document.getElementById('loginNome').value = '';
   document.getElementById('loginPw').value = '';
   document.getElementById('loginErr').textContent = '';
   navigate('screenSplash');
@@ -3291,6 +3303,13 @@ function openEditMembroModal(i) {
     var ruolo   = document.getElementById('mRuoloAcc').value;
     var sospeso = document.getElementById('mSospeso').checked;
     var canCreate = document.getElementById('mCanCreate').checked;
+    // Controlla nome univoco (case-insensitive) se è stato cambiato
+    if (nome.toLowerCase() !== m.name.toLowerCase()) {
+      var dup = MEMBERS.find(function(mem, idx) {
+        return idx !== i && mem.name.toLowerCase() === nome.toLowerCase();
+      });
+      if (dup) { showToast('// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO', 'error'); return; }
+    }
     MEMBERS[i].name             = nome;
     MEMBERS[i].initial          = nome.charAt(0).toUpperCase();
     MEMBERS[i].role             = ruolo;
