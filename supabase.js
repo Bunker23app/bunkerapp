@@ -1297,7 +1297,7 @@ addLog = async function(azione) {
 // PUSH NOTIFICATIONS — registrazione service worker e subscription
 // ══════════════════════════════════════════════════════
 
-var VAPID_PUBLIC_KEY = 'IN2B8iG0UDkIgA_r0wdMm5spcO2_2o6EqjpdHzCnUOc9Kl6Po3pp7Y3aVN1SsGtqqEn27E1xyqcwMqXlCzwnlw';
+var VAPID_PUBLIC_KEY = 'BBwt_tnMhG6c5nIwIVBVdSOPWmYc4AA0nYVj3SdQNXc64cvxCctHIl_y0zAhgt34-OhW5cJ55AYjJflXnCXxBoQ';
 
 function _urlBase64ToUint8Array(base64String) {
   var padding = '='.repeat((4 - base64String.length % 4) % 4);
