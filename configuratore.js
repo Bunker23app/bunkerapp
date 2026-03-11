@@ -205,6 +205,10 @@ function buildConfigura() {
   // ── Permessi pagine ──
   var ppList = document.getElementById('cfgPermPagine');
   if (ppList) buildPermPagine(ppList);
+
+  // ── Toggle notifiche globali ──
+  var nContainer = document.getElementById('cfgNotificheContainer');
+  if (nContainer) buildCfgNotifiche(nContainer);
 }
 
 function buildPermPagine(container) {
@@ -492,6 +496,11 @@ var WIDGET_PERMS = {
 // Permesso per aggiungere nuovi utenti
 // Valori: 'admin' | 'staff'
 var ADD_USER_PERM = 'admin';
+
+// ── Notifiche push globali ──
+var NOTIFICHE_CONFIG = {
+  enabled: true, // toggle globale (solo admin può cambiarlo)
+};
 
 var _cfgPageCurrent = null;
 var _cfgPageDragSrc = null;
@@ -802,5 +811,141 @@ function applyInfoSections() {
       el.style.display = sec.enabled ? '' : 'none';
       scrollable.appendChild(el);
     }
+  });
+}
+
+// ════════════════════════════════════════
+// NOTIFICHE PUSH — funzioni configuratore
+// ════════════════════════════════════════
+
+function buildCfgNotifiche(container) {
+  container.innerHTML = '';
+
+  var h = document.createElement('div');
+  h.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#444;margin:0 0 10px;text-transform:uppercase';
+  h.textContent = '// 🔔 NOTIFICHE PUSH';
+  container.appendChild(h);
+
+  var desc = document.createElement('div');
+  desc.style.cssText = 'font-family:var(--mono);font-size:7px;letter-spacing:1px;color:#555;margin:0 0 12px;line-height:1.6';
+  desc.textContent = 'Se disattivato, nessuna notifica viene inviata agli utenti indipendentemente dalle impostazioni dei singoli eventi.';
+  container.appendChild(desc);
+
+  var row = document.createElement('div');
+  row.className = 'cfg-perm-row';
+  row.innerHTML =
+    '<div>' +
+      '<div class="cfg-perm-label" style="font-size:9px">Notifiche push attive</div>' +
+      '<div id="cfgNotificheDesc" style="font-family:var(--mono);font-size:7px;color:#555;letter-spacing:1px;margin-top:2px">' +
+        (NOTIFICHE_CONFIG.enabled ? 'ATTIVE · le notifiche vengono inviate' : 'DISATTIVATE · nessuna notifica') +
+      '</div>' +
+    '</div>' +
+    '<label class="cfg-toggle" style="flex-shrink:0">' +
+      '<input type="checkbox" id="cfgNotificheToggle"' + (NOTIFICHE_CONFIG.enabled ? ' checked' : '') +
+      ' onchange="toggleNotificheGlobali(this.checked)">' +
+      '<span class="cfg-toggle-slider"></span>' +
+    '</label>';
+  container.appendChild(row);
+}
+
+function toggleNotificheGlobali(enabled) {
+  NOTIFICHE_CONFIG.enabled = enabled;
+  var d = document.getElementById('cfgNotificheDesc');
+  if (d) d.textContent = enabled ? 'ATTIVE · le notifiche vengono inviate' : 'DISATTIVATE · nessuna notifica';
+  saveConfig();
+  showToast(enabled ? '// NOTIFICHE ATTIVATE ✓' : '// NOTIFICHE DISATTIVATE', enabled ? 'success' : 'info');
+  addLog(enabled ? 'ha attivato le notifiche push' : 'ha disattivato le notifiche push');
+}
+
+// Invia notifica push tramite Supabase Edge Function
+async function inviaNotificaPush(title, body, roleFilter) {
+  if (!NOTIFICHE_CONFIG.enabled) return;
+  try {
+    var res = await fetch('https://ndcpekgxnawxwbvfseba.supabase.co/functions/v1/send-push-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kY3Bla2d4bmF3eHdidmZzZWJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NzU5NjksImV4cCI6MjA4ODQ1MTk2OX0.EmvG_iqAO3JcgCPk49fwEGcQQIOkeZhN076PuklD118',
+      },
+      body: JSON.stringify({ title: title, body: body, role_filter: roleFilter }),
+    });
+    var data = await res.json();
+    console.log('[push] notifica inviata a ' + (data.sent || 0) + ' dispositivi');
+  } catch(e) {
+    console.warn('[push] errore invio notifica:', e.message);
+  }
+}
+
+// Calcola i ruoli che possono vedere un evento in base al tipo
+function _getRoleFilterForEvent(tipo) {
+  if (tipo === 'invito' || tipo === 'consigliato') {
+    return ['admin', 'staff', 'aiutante', 'premium', 'utente'];
+  }
+  if (tipo === 'premium') {
+    return ['admin', 'staff', 'aiutante', 'premium'];
+  }
+  if (tipo === 'privato') {
+    return ['admin', 'staff', 'aiutante'];
+  }
+  if (tipo === 'segreto') {
+    return ['admin', 'staff'];
+  }
+  return ['admin', 'staff', 'aiutante', 'premium', 'utente'];
+}
+
+// Chiamare dopo aver salvato un nuovo evento se notifica_nuovo=true
+function notificaNuovoEvento(evento) {
+  if (!NOTIFICHE_CONFIG.enabled) return;
+  if (!evento.notifica_nuovo) return;
+  var roleFilter = _getRoleFilterForEvent(evento.tipo);
+  var body = (evento.ora ? evento.ora + ' · ' : '') + (evento.luogo || '');
+  inviaNotificaPush('🗓 NUOVO EVENTO: ' + (evento.nome || ''), body.trim(), roleFilter);
+}
+
+// Pianifica il reminder 5h prima (chiama inviaNotificaPush al momento giusto)
+// Versione semplificata: controlla ogni minuto se è ora di mandare il reminder
+var _reminderTimers = {};
+
+function pianificaReminderEvento(evento) {
+  if (!NOTIFICHE_CONFIG.enabled) return;
+  if (!evento.notifica_reminder) return;
+  if (!evento.ora) return;
+
+  var key = 'reminder_' + evento.id;
+  if (_reminderTimers[key]) clearTimeout(_reminderTimers[key]);
+
+  try {
+    var dataStr = evento.anno + '-' + String(evento.mese).padStart(2,'0') + '-' + String(evento.giorno).padStart(2,'0');
+    var parts = evento.ora.split(':');
+    var h = parseInt(parts[0]) || 0;
+    var m = parseInt(parts[1]) || 0;
+    var eventDate = new Date(dataStr + 'T' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':00');
+    var reminderDate = new Date(eventDate.getTime() - 5 * 60 * 60 * 1000); // -5h
+    var now = Date.now();
+    var delay = reminderDate.getTime() - now;
+
+    if (delay <= 0) return; // già passato
+
+    _reminderTimers[key] = setTimeout(function() {
+      if (!NOTIFICHE_CONFIG.enabled || !evento.notifica_reminder) return;
+      var roleFilter = _getRoleFilterForEvent(evento.tipo);
+      inviaNotificaPush(
+        '⏰ TRA 5 ORE: ' + (evento.nome || ''),
+        'Inizia alle ' + evento.ora + (evento.luogo ? ' · ' + evento.luogo : ''),
+        roleFilter
+      );
+    }, delay);
+
+    console.log('[push] reminder pianificato per ' + evento.nome + ' tra ' + Math.round(delay/60000) + ' min');
+  } catch(e) {
+    console.warn('[push] errore pianificazione reminder:', e.message);
+  }
+}
+
+// Ripianifica tutti i reminder al caricamento dell'app
+function ripianificaTuttiReminder() {
+  if (!EVENTI || !EVENTI.length) return;
+  EVENTI.forEach(function(ev) {
+    if (ev.notifica_reminder) pianificaReminderEvento(ev);
   });
 }

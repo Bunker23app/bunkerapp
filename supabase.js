@@ -69,6 +69,7 @@ function saveConfig() {
       BACHECA: BACHECA,
       INFO: INFO,
       _nextIds: _nextIds,
+      NOTIFICHE_CONFIG: NOTIFICHE_CONFIG,
       // Articoli magazzino aggiunti dinamicamente (id >= 23)
       MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
     };
@@ -515,6 +516,8 @@ function _applyConfig(cfg) {
     var maxMzId = cfg.MAGAZZINO_EXTRA.reduce(function(mx,m){ return Math.max(mx, m.id||0); }, 22);
     if (maxMzId >= _nextIds.magazzino) _nextIds.magazzino = maxMzId + 1;
   }
+  // Notifiche push
+  if (cfg.NOTIFICHE_CONFIG) Object.assign(NOTIFICHE_CONFIG, cfg.NOTIFICHE_CONFIG);
 }
 
 async function loadAllData() {
