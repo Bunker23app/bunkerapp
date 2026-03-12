@@ -44,6 +44,15 @@ async function _sbDelete(table, col, val) {
   } catch(e) {}
 }
 
+// Elimina una singola riga per id — usata dalle funzioni di delete esplicite in ui.js
+async function _sbDeleteById(table, id) {
+  if (!_sbReady) return;
+  try {
+    var res = await getSupabase().from(table).delete().eq('id', id);
+    if (res.error) console.warn('[sb.' + table + ' deleteById]', res.error.message);
+  } catch(e) { console.warn('[sb.' + table + ' deleteById]', e.message); }
+}
+
 // ── SAVE FUNCTIONS ───────────────────────
 
 // CONFIG (widget, tab, testi, sezioni, ecc.) — blob JSON su appconfig
@@ -124,7 +133,7 @@ function saveMembers() {
   }, 600);
 }
 
-// EVENTI (calendario)
+// EVENTI (calendario) — solo upsert. Il DELETE avviene in deleteEvento() via _sbDeleteById().
 function saveEventi() {
   _debounce('eventi', async function() {
     if (!_sbReady) return;
@@ -153,15 +162,9 @@ function saveEventi() {
           notifica_reminder: e.notifica_reminder || false,
         };
       });
-      // Upsert: aggiorna se esiste, inserisce se non esiste
-      var res = await getSupabase().from('calendario').upsert(rows, { onConflict: 'id' });
-      if (res.error) console.warn('[sb.calendario save]', res.error.message);
-      // Elimina eventi che non sono più in EVENTI (rimossi)
-      var ids = EVENTI.map(function(e){ return e.id; });
-      if (ids.length) {
-        await getSupabase().from('calendario').delete().not('id', 'in', '(' + ids.join(',') + ')');
-      } else {
-        await getSupabase().from('calendario').delete().gt('id', 0);
+      if (rows.length) {
+        var res = await getSupabase().from('calendario').upsert(rows, { onConflict: 'id' });
+        if (res.error) console.warn('[sb.calendario save]', res.error.message);
       }
     } catch(e) { console.warn('[sb.calendario]', e.message); }
     saveConfig();
@@ -172,12 +175,8 @@ function saveEventi() {
 // Incluse nella saveConfig()
 
 // SPESA — upsert intelligente: aggiorna/inserisce le righe presenti, elimina quelle rimosse
-// NON cancella e riscrive l'intera tabella per evitare il ciclo DELETE→INSERT→realtime→sync→save
+// SPESA — solo upsert. Il DELETE avviene in deleteSpesa() via deleteSpesaRow(), mai qui.
 function saveSpesa() {
-  // saveSpesa() è mantenuto per compatibilità con buildAll/saveToStorage,
-  // ma le operazioni chirurgiche (add/update/delete singola riga) vengono
-  // gestite da saveSpesaRow() e deleteSpesaRow() per evitare race condition.
-  // Qui facciamo solo una sync completa usata al caricamento iniziale.
   _debounce('spesa', async function() {
     if (!_sbReady) return;
     try {
@@ -198,12 +197,6 @@ function saveSpesa() {
       if (rows.length) {
         var res = await sb.from('spesa').upsert(rows, { onConflict: 'id' });
         if (res.error) console.warn('[sb.spesa upsert]', res.error.message);
-      }
-      var ids = SPESA.map(function(s){ return s.id; });
-      if (ids.length) {
-        await sb.from('spesa').delete().not('id', 'in', '(' + ids.join(',') + ')');
-      } else {
-        await sb.from('spesa').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.spesa]', e.message); }
   }, 600);
@@ -296,26 +289,19 @@ async function cleanupDuplicateSpesa() {
   } catch(e) { console.warn('[cleanup spesa]', e.message); }
 }
 
-// LAVORI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
+// LAVORI — solo upsert della riga modificata.
+// Il DELETE avviene in deleteLavori() via _sbDeleteById(), mai qui.
+// Questo evita che un aiutante che salva sovrascriva righe aggiunte in concorrenza.
 function saveLavori() {
   _debounce('lavori', async function() {
     if (!_sbReady) return;
     try {
-      var sb = getSupabase();
       var rows = LAVORI.map(function(l) {
         return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
       });
-      // 1. Upsert: aggiorna se esiste, inserisce se non esiste
       if (rows.length) {
-        var res = await sb.from('lavori').upsert(rows, { onConflict: 'id' });
+        var res = await getSupabase().from('lavori').upsert(rows, { onConflict: 'id' });
         if (res.error) console.warn('[sb.lavori upsert]', res.error.message);
-      }
-      // 2. Elimina solo le righe non più presenti in LAVORI
-      var ids = LAVORI.map(function(l){ return l.id; });
-      if (ids.length) {
-        await sb.from('lavori').delete().not('id', 'in', '(' + ids.join(',') + ')');
-      } else {
-        await sb.from('lavori').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.lavori]', e.message); }
   }, 600);
@@ -396,51 +382,33 @@ function savePagamenti() {
   }, 600);
 }
 
-// SUGGERIMENTI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
+// SUGGERIMENTI — solo upsert. Il DELETE avviene in deleteSuggerimento() via _sbDeleteById().
 function saveSuggerimenti() {
   _debounce('suggerimenti', async function() {
     if (!_sbReady) return;
     try {
-      var sb = getSupabase();
       var rows = SUGGERIMENTI.map(function(s) {
         return { id: s.id, testo: s.testo, author: s.author || null, ts: new Date(s.id).toISOString() };
       });
-      // 1. Upsert
       if (rows.length) {
-        var res = await sb.from('suggerimenti').upsert(rows, { onConflict: 'id' });
+        var res = await getSupabase().from('suggerimenti').upsert(rows, { onConflict: 'id' });
         if (res.error) console.warn('[sb.suggerimenti upsert]', res.error.message);
-      }
-      // 2. Elimina solo le righe non più presenti
-      var ids = SUGGERIMENTI.map(function(s){ return s.id; });
-      if (ids.length) {
-        await sb.from('suggerimenti').delete().not('id', 'in', '(' + ids.join(',') + ')');
-      } else {
-        await sb.from('suggerimenti').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.suggerimenti]', e.message); }
   }, 600);
 }
 
-// VALUTAZIONI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
+// VALUTAZIONI — solo upsert. Il DELETE avviene in deleteValutazione() via _sbDeleteById().
 function saveValutazioni() {
   _debounce('valutazioni', async function() {
     if (!_sbReady) return;
     try {
-      var sb = getSupabase();
       var rows = VALUTAZIONI.map(function(v) {
         return { id: v.id, author: v.nome, stelle: v.stelle || 0, testo: v.testo || '', ts: new Date(v.id).toISOString() };
       });
-      // 1. Upsert
       if (rows.length) {
-        var res = await sb.from('valutazioni').upsert(rows, { onConflict: 'id' });
+        var res = await getSupabase().from('valutazioni').upsert(rows, { onConflict: 'id' });
         if (res.error) console.warn('[sb.valutazioni upsert]', res.error.message);
-      }
-      // 2. Elimina solo le righe non più presenti
-      var ids = VALUTAZIONI.map(function(v){ return v.id; });
-      if (ids.length) {
-        await sb.from('valutazioni').delete().not('id', 'in', '(' + ids.join(',') + ')');
-      } else {
-        await sb.from('valutazioni').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.valutazioni]', e.message); }
   }, 600);

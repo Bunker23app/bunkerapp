@@ -1283,9 +1283,11 @@ function buildSuggerimenti() {
 }
 
 function deleteSuggerimento(i) {
+  var removedId = SUGGERIMENTI[i] && SUGGERIMENTI[i].id;
   SUGGERIMENTI.splice(i, 1);
   addLog('eliminato suggerimento anonimo');
   saveSuggerimenti();
+  if (removedId) _sbDeleteById('suggerimenti', removedId);
   buildSuggerimenti();
 }
 
@@ -1378,9 +1380,11 @@ function buildValutazioni() {
 }
 
 function deleteValutazione(i) {
+  var removedId = VALUTAZIONI[i] && VALUTAZIONI[i].id;
   VALUTAZIONI.splice(i, 1);
   addLog('eliminata valutazione');
   saveValutazioni();
+  if (removedId) _sbDeleteById('valutazioni', removedId);
   buildValutazioni();
 }
 
@@ -1818,12 +1822,17 @@ function confermaAcquisto(i) {
 
 function deleteSpesa(i) {
   var item = SPESA[i];
+  if (!item) return;
+  var removedId = item.id;
   // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
   // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
-  if (item && item.fromMagazzino && item.magazzinoId) {
+  if (item.fromMagazzino && item.magazzinoId) {
     _manuallyDeletedSpesaIds[item.magazzinoId] = true;
   }
-  deleteItem(SPESA, i, 'spesa', buildSpesa, saveSpesa);
+  deleteItem(SPESA, i, 'spesa', buildSpesa, function() {
+    saveSpesa();
+    _sbDeleteById('spesa', removedId);
+  });
 }
 
 // ════════════════════════════════════════
@@ -1853,7 +1862,16 @@ function buildLavori() {
 }
 
 function toggleLavori(i) { toggleItem(LAVORI, i, 'lavoro', buildLavori, saveLavori); }
-function deleteLavori(i) { deleteItem(LAVORI, i, 'lavoro', buildLavori, saveLavori); }
+function deleteLavori(i) {
+  var item = LAVORI[i];
+  if (!item) return;
+  var removedId = item.id;
+  deleteItem(LAVORI, i, 'lavoro', buildLavori, function() {
+    // Upsert delle righe rimaste (per sicurezza) + delete puntuale della riga rimossa
+    saveLavori();
+    _sbDeleteById('lavori', removedId);
+  });
+}
 
 function openLavoriModal(editIdx) {
   var isEdit = editIdx !== undefined && editIdx !== null;
@@ -2280,6 +2298,7 @@ function deleteEvento(i) {
     EVENTI.splice(i, 1);
     if (evId && EVENTI_VALUTAZIONI[evId]) { delete EVENTI_VALUTAZIONI[evId]; saveConfig(); }
     saveEventi();
+    _sbDeleteById('calendario', evId);
     sCalSel = null;
     buildAll();
     showToast('// EVENTO ELIMINATO', 'error');
@@ -3813,6 +3832,20 @@ document.addEventListener('DOMContentLoaded', function() {
   buildAll();
   updateHomeAccessLevel();
   startEventoBannerTimer();
+
+  // Ascolta messaggi dal service worker (es. click su notifica push con app già aperta)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'APRI_EVENTO' && event.data.eventoId) {
+        // Se i dati sono già caricati, naviga subito; altrimenti salva per dopo
+        if (_sbReady && EVENTI.length > 0) {
+          navigaAdEvento(event.data.eventoId);
+        } else {
+          _pendingEventoId = event.data.eventoId;
+        }
+      }
+    });
+  }
 
   // Ripristina sessione (skip se c'è un invito pendente)
   try {

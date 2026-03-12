@@ -18,17 +18,24 @@ self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   var targetUrl = event.notification.data.url || 'https://bunker23app.github.io/bunkerapp/';
 
+  // Estrae l'eventoId dal parametro ?evento= dell'URL
+  var eventoId = null;
+  try {
+    var urlObj = new URL(targetUrl);
+    eventoId = urlObj.searchParams.get('evento');
+  } catch(e) {}
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // Se c'è già una finestra aperta sull'app, naviga lì aggiornando l'URL
       for (var i = 0; i < clientList.length; i++) {
         var client = clientList[i];
-        if (client.url.indexOf('bunker23app.github.io') !== -1 && 'navigate' in client) {
-          client.navigate(targetUrl);
+        if (client.url.indexOf('bunker23app.github.io') !== -1) {
+          // App già aperta: manda un messaggio senza ricaricare la pagina
+          client.postMessage({ type: 'APRI_EVENTO', eventoId: eventoId });
           return client.focus();
         }
       }
-      // Altrimenti apri una nuova finestra
+      // App non aperta: aprila con il parametro nell'URL (verrà letto da _pendingEventoId)
       return clients.openWindow(targetUrl);
     })
   );
