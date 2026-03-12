@@ -231,6 +231,17 @@ async function deleteSpesaRow(id) {
   } catch(e) { console.warn('[sb.spesaRow delete]', e.message); }
 }
 
+// Salva/aggiorna UNA singola riga lavoro — chirurgico, tocca SOLO il campo done
+// di quel lavoro specifico, senza sovrascrivere gli stati degli altri lavori.
+async function saveLavoroRow(l) {
+  if (!_sbReady) return;
+  try {
+    var row = { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
+    var res = await getSupabase().from('lavori').upsert(row, { onConflict: 'id' });
+    if (res.error) console.warn('[sb.lavoroRow upsert]', res.error.message);
+  } catch(e) { console.warn('[sb.lavoroRow]', e.message); }
+}
+
 // Rimuove duplicati dalla tabella spesa (stesso magazzino_id con from_magazzino=true)
 // Chiamata UNA SOLA VOLTA al caricamento iniziale per bonificare il DB
 async function cleanupDuplicateSpesa() {

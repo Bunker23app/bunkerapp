@@ -1861,7 +1861,17 @@ function buildLavori() {
   updateDash();
 }
 
-function toggleLavori(i) { toggleItem(LAVORI, i, 'lavoro', buildLavori, saveLavori); }
+function toggleLavori(i) {
+  if (i < 0 || i >= LAVORI.length) return;
+  var item = LAVORI[i];
+  item.done = !item.done;
+  addLog((item.done ? 'completato' : 'riaperto') + ' lavoro: ' + (item.lavoro || ''));
+  // Upsert chirurgico: solo la riga toccata, non l'intero array.
+  // saveLavori() (bulk) scriverebbe tutti i lavori con i valori locali,
+  // sovrascrivendo modifiche concorrenti di altri utenti sugli altri lavori.
+  saveLavoroRow(item);
+  buildLavori();
+}
 function deleteLavori(i) {
   var item = LAVORI[i];
   if (!item) return;
