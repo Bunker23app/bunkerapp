@@ -1823,7 +1823,7 @@ function toggleSpesa(i) {
     // Stiamo riaprendo una voce già fatta → riapri senza toccare magazzino
     item.done = false;
     addLog('riaperto spesa: ' + item.nome);
-    saveSpesa();
+    saveSpesaRow(item);
     buildSpesa();
   }
 }
@@ -1866,18 +1866,27 @@ function confermaAcquisto(i) {
 
   buildSpesa();
   saveMagazzino();
-  saveSpesa();
+  saveSpesaRow(item);
   showToast('Acquisto registrato!', 'success');
 }
 
 function deleteSpesa(i) {
   var item = SPESA[i];
-  // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
-  // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
-  if (item && item.fromMagazzino && item.magazzinoId) {
-    _manuallyDeletedSpesaIds[item.magazzinoId] = true;
-  }
-  deleteItem(SPESA, i, 'spesa', buildSpesa, saveSpesa);
+  if (!item) return;
+  var label = item.nome || 'articolo';
+  showConfirm('Rimuovere "' + label + '" dalla lista?', function() {
+    // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
+    // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
+    if (item.fromMagazzino && item.magazzinoId) {
+      _manuallyDeletedSpesaIds[item.magazzinoId] = true;
+    }
+    var idToDelete = item.id;
+    addLog('rimosso spesa: ' + label);
+    SPESA.splice(i, 1);
+    deleteSpesaRow(idToDelete);
+    buildSpesa();
+    showToast(T_DELETED, 'error');
+  }, 'RIMUOVI ARTICOLO', 'RIMUOVI');
 }
 
 // ════════════════════════════════════════
@@ -3031,7 +3040,7 @@ function openSpesaModal(editIdx) {
       _categoria:     isEdit ? (item._categoria     || null)  : null,
     };
     if (isEdit) { SPESA[editIdx] = obj; } else { SPESA.push(obj); }
-    saveSpesa();
+    saveSpesaRow(obj);
     addLog((isEdit ? 'modificato' : 'aggiunto') + ' spesa: ' + obj.nome);
     buildSpesa();
     showToast(T_SAVED, 'success');
@@ -3530,11 +3539,16 @@ function toggleSospesoMembro(i) {
   var theirLevel = roleLabel(m.role).level;
   if (!isAdmin() && theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
   var newSospeso = !m.sospeso;
-  MEMBERS[i].sospeso = newSospeso;
-  addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
-  saveMembers();
-  buildMembriList();
-  showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
+  var azione = newSospeso ? 'Sospendere' : 'Riattivare';
+  var titolo = newSospeso ? 'SOSPENDI ACCOUNT' : 'RIATTIVA ACCOUNT';
+  var btnLabel = newSospeso ? 'SOSPENDI' : 'RIATTIVA';
+  showConfirm(azione + ' l'account di ' + m.name + '?', function() {
+    MEMBERS[i].sospeso = newSospeso;
+    addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
+    saveMembers();
+    buildMembriList();
+    showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
+  }, titolo, btnLabel);
 }
 
 

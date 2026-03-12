@@ -174,6 +174,10 @@ function saveEventi() {
 // SPESA — upsert intelligente: aggiorna/inserisce le righe presenti, elimina quelle rimosse
 // NON cancella e riscrive l'intera tabella per evitare il ciclo DELETE→INSERT→realtime→sync→save
 function saveSpesa() {
+  // saveSpesa() è mantenuto per compatibilità con buildAll/saveToStorage,
+  // ma le operazioni chirurgiche (add/update/delete singola riga) vengono
+  // gestite da saveSpesaRow() e deleteSpesaRow() per evitare race condition.
+  // Qui facciamo solo una sync completa usata al caricamento iniziale.
   _debounce('spesa', async function() {
     if (!_sbReady) return;
     try {
@@ -191,21 +195,47 @@ function saveSpesa() {
           added_by: currentUser ? currentUser.name : null,
         };
       });
-      // 1. Upsert: aggiorna se esiste, inserisce se non esiste
       if (rows.length) {
         var res = await sb.from('spesa').upsert(rows, { onConflict: 'id' });
         if (res.error) console.warn('[sb.spesa upsert]', res.error.message);
       }
-      // 2. Elimina righe che non sono più in SPESA (rimosse dall'utente)
       var ids = SPESA.map(function(s){ return s.id; });
       if (ids.length) {
         await sb.from('spesa').delete().not('id', 'in', '(' + ids.join(',') + ')');
       } else {
-        // Lista vuota: cancella tutto
         await sb.from('spesa').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.spesa]', e.message); }
   }, 600);
+}
+
+// Salva/aggiorna UNA singola riga spesa — chirurgico, nessuna race condition
+async function saveSpesaRow(s) {
+  if (!_sbReady) return;
+  try {
+    var row = {
+      id: s.id,
+      item: s.nome || s.item || '',
+      done: s.done || false,
+      qty: s.qty || '',
+      costo_unitario: s.costoUnitario || 0,
+      unita: s.unita || '',
+      from_magazzino: s.fromMagazzino || false,
+      magazzino_id: s.magazzinoId || null,
+      added_by: currentUser ? currentUser.name : null,
+    };
+    var res = await getSupabase().from('spesa').upsert(row, { onConflict: 'id' });
+    if (res.error) console.warn('[sb.spesaRow upsert]', res.error.message);
+  } catch(e) { console.warn('[sb.spesaRow]', e.message); }
+}
+
+// Elimina UNA singola riga spesa per ID — chirurgico, nessuna race condition
+async function deleteSpesaRow(id) {
+  if (!_sbReady) return;
+  try {
+    var res = await getSupabase().from('spesa').delete().eq('id', id);
+    if (res.error) console.warn('[sb.spesaRow delete]', res.error.message);
+  } catch(e) { console.warn('[sb.spesaRow delete]', e.message); }
 }
 
 // Rimuove duplicati dalla tabella spesa (stesso magazzino_id con from_magazzino=true)
