@@ -3874,19 +3874,20 @@ document.addEventListener('DOMContentLoaded', function() {
   updateHomeAccessLevel();
   startEventoBannerTimer();
 
-  // Ascolta messaggi dal service worker (es. click su notifica push con app già aperta)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', function(event) {
+  // Ascolta messaggi dal service worker via BroadcastChannel
+  // (usato quando si clicca una notifica push con l'app già aperta)
+  try {
+    var _pushChannel = new BroadcastChannel('bunker23_push');
+    _pushChannel.onmessage = function(event) {
       if (event.data && event.data.type === 'APRI_EVENTO' && event.data.eventoId) {
-        // Se i dati sono già caricati, naviga subito; altrimenti salva per dopo
         if (_sbReady && EVENTI.length > 0) {
           navigaAdEvento(event.data.eventoId);
         } else {
           _pendingEventoId = event.data.eventoId;
         }
       }
-    });
-  }
+    };
+  } catch(e) {}
 
   // Ripristina sessione (skip se c'è un invito pendente)
   try {

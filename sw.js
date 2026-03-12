@@ -1,6 +1,6 @@
 self.addEventListener('push', function(event) {
   if (!event.data) return;
-  
+
   var data = event.data.json();
   var title = data.title || 'BUNKER23';
   var options = {
@@ -27,15 +27,29 @@ self.addEventListener('notificationclick', function(event) {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      var appClient = null;
       for (var i = 0; i < clientList.length; i++) {
-        var client = clientList[i];
-        if (client.url.indexOf('bunker23app.github.io') !== -1) {
-          // App già aperta: manda un messaggio senza ricaricare la pagina
-          client.postMessage({ type: 'APRI_EVENTO', eventoId: eventoId });
-          return client.focus();
+        if (clientList[i].url.indexOf('bunker23app.github.io') !== -1) {
+          appClient = clientList[i];
+          break;
         }
       }
-      // App non aperta: aprila con il parametro nell'URL (verrà letto da _pendingEventoId)
+
+      if (appClient) {
+        // App già aperta: usa BroadcastChannel per comunicare l'eventoId
+        // senza ricaricare la pagina, poi porta la finestra in primo piano.
+        if (eventoId) {
+          try {
+            var bc = new BroadcastChannel('bunker23_push');
+            bc.postMessage({ type: 'APRI_EVENTO', eventoId: eventoId });
+            bc.close();
+          } catch(e) {}
+        }
+        return appClient.focus();
+      }
+
+      // App non aperta: aprila con ?evento=ID nell'URL.
+      // _pendingEventoId lo leggerà all'avvio.
       return clients.openWindow(targetUrl);
     })
   );
