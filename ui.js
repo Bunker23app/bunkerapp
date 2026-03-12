@@ -3542,7 +3542,7 @@ function toggleSospesoMembro(i) {
   var azione = newSospeso ? 'Sospendere' : 'Riattivare';
   var titolo = newSospeso ? 'SOSPENDI ACCOUNT' : 'RIATTIVA ACCOUNT';
   var btnLabel = newSospeso ? 'SOSPENDI' : 'RIATTIVA';
-  showConfirm(azione + ' l'account di ' + m.name + '?', function() {
+  showConfirm(azione + " l'account di " + m.name + '?', function() {
     MEMBERS[i].sospeso = newSospeso;
     addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
     saveMembers();
