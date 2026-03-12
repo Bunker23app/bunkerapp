@@ -586,7 +586,7 @@ function updateHomeAccessLevel() {
 // ════════════════════════════════════════
 // TABS STAFF
 // ════════════════════════════════════════
-const TABS = ['dashboard','calendario','spesa','chat','log','cerca','lavori','magazzino','pagamenti','profilo','configura','contatori'];
+const TABS = ['dashboard','calendario','spesa','chat','log','cerca','lavori','magazzino','pagamenti','profilo','configura','contatori','inviti'];
 var _currentTab = 'dashboard';
 
 function showTab(name) {
@@ -3622,6 +3622,7 @@ function buildAll() {
   buildSuggerimenti();
   buildValutazioni();
   buildContatori();
+  buildInviti();
   updateDash();
   updateLogoutBtns();
   updateStaffNavBtns();
@@ -3743,6 +3744,10 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (typeof ripianificaTuttiReminder === 'function') {
         ripianificaTuttiReminder();
+      }
+      // Controlla se c'è un token invito nell'URL
+      if (typeof checkInviteToken === 'function') {
+        checkInviteToken();
       }
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
@@ -4232,3 +4237,265 @@ function stampaProgrammaEventi() {
 }
 
 
+
+// ════════════════════════════════════════
+// SISTEMA INVITI — QR CODE MONOUSO
+// ════════════════════════════════════════
+
+var _currentInviteToken = null;
+
+// Genera stringa casuale per il token
+function _generateToken() {
+  var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var token = '';
+  for (var i = 0; i < 12; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+async function generaNuovoInvito() {
+  if (!isStaff()) { showToast('// PERMESSO NEGATO', 'error'); return; }
+  if (!_sbReady) { showToast('// CONNESSIONE NON PRONTA', 'error'); return; }
+
+  var token = _generateToken();
+  var scadenza = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+  try {
+    var res = await getSupabase().from('invite_tokens').insert({
+      token: token,
+      creato_da: currentUser ? currentUser.name : 'staff',
+      scadenza: scadenza,
+      usato: false,
+      usato_da: null,
+    });
+    if (res.error) { showToast('// ERRORE: ' + res.error.message, 'error'); return; }
+
+    // Mostra QR
+    var baseUrl = window.location.origin + window.location.pathname;
+    var link = baseUrl + '?invite=' + token;
+    _mostraQrInvito(link);
+    buildInviti();
+    addLog('ha generato un invito');
+  } catch(e) {
+    showToast('// ERRORE GENERAZIONE INVITO', 'error');
+  }
+}
+
+function _mostraQrInvito(link) {
+  var overlay = document.getElementById('invitoQrOverlay');
+  var qrDiv   = document.getElementById('invitoQrCode');
+  var linkDiv = document.getElementById('invitoQrLink');
+  if (!overlay || !qrDiv) return;
+
+  // Genera QR usando API pubblica gratuita
+  qrDiv.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' +
+    encodeURIComponent(link) + '" style="display:block;width:180px;height:180px"/>';
+  if (linkDiv) linkDiv.textContent = link;
+  overlay.style.display = 'block';
+  overlay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function buildInviti() {
+  var list = document.getElementById('invitiList');
+  if (!list) return;
+  if (!_sbReady) { list.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:#444;padding:10px">// CARICAMENTO...</div>'; return; }
+
+  try {
+    var res = await getSupabase()
+      .from('invite_tokens')
+      .select('*')
+      .order('creato_il', { ascending: false });
+
+    if (res.error) { list.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:#cc2200;padding:10px">// ERRORE CARICAMENTO</div>'; return; }
+
+    var inviti = res.data || [];
+    // Aggiorna badge dashboard
+    var attivi = inviti.filter(function(inv) {
+      return !inv.usato && new Date(inv.scadenza) > new Date();
+    }).length;
+    var wEl = document.getElementById('wInviti');
+    if (wEl) wEl.textContent = attivi;
+
+    if (!inviti.length) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:#333;padding:10px;text-align:center;letter-spacing:2px">// NESSUN INVITO GENERATO</div>';
+      return;
+    }
+
+    var now = new Date();
+    list.innerHTML = inviti.map(function(inv) {
+      var scad = new Date(inv.scadenza);
+      var scaduto = scad < now;
+      var stato, statoColor;
+      if (inv.usato) { stato = 'USATO'; statoColor = '#1a6b3c'; }
+      else if (scaduto) { stato = 'SCADUTO'; statoColor = '#555'; }
+      else { stato = 'ATTIVO'; statoColor = '#4a9abe'; }
+
+      var dataCreazione = new Date(inv.creato_il).toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) +
+        ' · ' + new Date(inv.creato_il).toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
+
+      var revokaBtn = (!inv.usato && !scaduto)
+        ? '<button onclick="revokaInvito(' + inv.id + ')" style="padding:3px 8px;background:transparent;border:1px solid #661100;color:#cc2200;font-family:var(--mono);font-size:7px;letter-spacing:1px;cursor:pointer;border-radius:2px;flex-shrink:0">REVOCA</button>'
+        : '';
+
+      var usatoDa = inv.usato_da
+        ? '<div style="font-family:var(--mono);font-size:7px;color:#1a6b3c;letter-spacing:1px;margin-top:3px">👤 ' + inv.usato_da + '</div>'
+        : '';
+
+      return '<div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px 12px;margin-bottom:6px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+              '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--white)">' + inv.token + '</span>' +
+              '<span style="font-family:var(--mono);font-size:7px;letter-spacing:1px;color:' + statoColor + ';border:1px solid ' + statoColor + ';padding:1px 5px;border-radius:2px">' + stato + '</span>' +
+            '</div>' +
+            '<div style="font-family:var(--mono);font-size:7px;color:#555;letter-spacing:1px">✦ ' + inv.creato_da + ' · ' + dataCreazione + '</div>' +
+            usatoDa +
+          '</div>' +
+          revokaBtn +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:#cc2200;padding:10px">// ERRORE: ' + e.message + '</div>';
+  }
+}
+
+async function revokaInvito(id) {
+  if (!confirm('Revocare questo invito?')) return;
+  try {
+    var res = await getSupabase().from('invite_tokens').delete().eq('id', id);
+    if (res.error) { showToast('// ERRORE REVOCA', 'error'); return; }
+    showToast('// INVITO REVOCATO ✓', 'success');
+    addLog('ha revocato un invito');
+    buildInviti();
+  } catch(e) {
+    showToast('// ERRORE REVOCA', 'error');
+  }
+}
+
+// ── REGISTRAZIONE TRAMITE INVITO ─────────────────────────────────────────────
+
+var _inviteTokenAttivo = null;
+
+// Controlla all'avvio se c'è un token nell'URL
+async function checkInviteToken() {
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('invite');
+  if (!token) return;
+
+  // Rimuovi il token dall'URL senza ricaricare la pagina
+  window.history.replaceState({}, document.title, window.location.pathname);
+
+  if (!_sbReady) {
+    // Aspetta che _sbReady sia true (max 5 secondi)
+    var attempts = 0;
+    while (!_sbReady && attempts < 50) {
+      await new Promise(function(r){ setTimeout(r, 100); });
+      attempts++;
+    }
+  }
+
+  try {
+    var res = await getSupabase()
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token)
+      .single();
+
+    if (res.error || !res.data) {
+      showToast('// INVITO NON VALIDO', 'error');
+      return;
+    }
+
+    var inv = res.data;
+    if (inv.usato) { showToast('// INVITO GIÀ UTILIZZATO', 'error'); return; }
+    if (new Date(inv.scadenza) < new Date()) { showToast('// INVITO SCADUTO', 'error'); return; }
+
+    // Token valido — mostra schermata registrazione
+    _inviteTokenAttivo = inv;
+    navigate('screenRegistrazione');
+  } catch(e) {
+    showToast('// ERRORE VERIFICA INVITO', 'error');
+  }
+}
+
+async function doRegistrazione() {
+  var nome = document.getElementById('regNome').value.trim();
+  var pw   = document.getElementById('regPw').value.trim();
+  var conf = document.getElementById('regPwConf').value.trim();
+  var err  = document.getElementById('regErr');
+
+  if (!nome)           { err.textContent = '// INSERISCI UN NOME UTENTE'; return; }
+  if (nome.length < 2) { err.textContent = '// NOME TROPPO CORTO (min 2 caratteri)'; return; }
+  if (!pw)             { err.textContent = '// INSERISCI UNA PASSWORD'; return; }
+  if (pw.length < 6)   { err.textContent = '// PASSWORD TROPPO CORTA (min 6 caratteri)'; return; }
+  if (pw !== conf)     { err.textContent = '// LE PASSWORD NON COINCIDONO'; return; }
+
+  // Controlla nome univoco (case-insensitive)
+  var nomeEsiste = MEMBERS.some(function(m) {
+    return m.name.toLowerCase() === nome.toLowerCase();
+  });
+  if (nomeEsiste) { err.textContent = '// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO'; return; }
+
+  if (!_inviteTokenAttivo) { err.textContent = '// INVITO NON VALIDO'; return; }
+
+  try {
+    // Verifica token ancora valido (double-check)
+    var check = await getSupabase()
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', _inviteTokenAttivo.token)
+      .single();
+
+    if (check.error || !check.data || check.data.usato) {
+      err.textContent = '// INVITO GIÀ UTILIZZATO O NON VALIDO';
+      return;
+    }
+
+    var hash = await sha256(pw);
+    var initial = nome.charAt(0).toUpperCase();
+    var color = COLORS[MEMBERS.length % COLORS.length];
+    var nuovoMembro = { name: nome, initial: initial, color: color, password: hash, role: 'utente' };
+
+    // Salva membro su Supabase
+    var resMem = await getSupabase().from('members').insert({
+      name: nome,
+      initial: initial,
+      color: color,
+      password_hash: hash,
+      role: 'utente',
+      sospeso: false,
+      can_create_profiles: false,
+    });
+    if (resMem.error) {
+      if (resMem.error.message.includes('unique') || resMem.error.message.includes('duplicate')) {
+        err.textContent = '// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO';
+      } else {
+        err.textContent = '// ERRORE: ' + resMem.error.message;
+      }
+      return;
+    }
+
+    // Marca token come usato
+    await getSupabase().from('invite_tokens').update({ usato: true, usato_da: nome }).eq('id', _inviteTokenAttivo.id);
+
+    // Aggiungi a MEMBERS locale e fai login automatico
+    MEMBERS.push(nuovoMembro);
+    currentUser = nuovoMembro;
+    _inviteTokenAttivo = null;
+
+    try { localStorage.setItem('bunker23_session', JSON.stringify({ name: nome, role: 'utente', ts: Date.now() })); } catch(e) {}
+
+    guestMode = false;
+    addLog('si è registrato tramite invito');
+    buildAll();
+    updateHomeAccessLevel();
+    if (typeof onUserLogin === 'function') onUserLogin();
+    if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
+    navigate('screenHome');
+    showToast('// BENVENUTO, ' + nome.toUpperCase() + ' ✓', 'success');
+  } catch(e) {
+    err.textContent = '// ERRORE REGISTRAZIONE: ' + e.message;
+  }
+}
