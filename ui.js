@@ -3304,11 +3304,16 @@ function buildMembriList() {
           // Admin: pulsante edit completo + elimina
           ? '<button class="edit-btn-small visible" onclick="openEditMembroModal(' + i + ')" style="margin-right:4px">✏</button>' +
             (!isSelf ? '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>' : '<span style="width:28px"></span>')
-          // Staff: solo toggle sospeso + elimina (senza edit nome/password)
-          : (!isSelf
-              ? '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + '" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
-                '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100;margin-left:4px" onclick="rimuoviMembro(' + i + ')">✕</button>'
-              : '<span style="width:60px"></span>')
+          // canPromote (non admin): pulsante promuovi + sospendi + elimina
+          : (canPromoteUsers() && !isSelf
+              ? '<button class="edit-btn-small visible" style="color:#22cc44;border-color:#116611;margin-right:4px" onclick="openPromoteModal(' + i + ')" title="Cambia livello">⬆</button>' +
+                '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + ';margin-right:4px" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
+                '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>'
+              // Staff normale: solo sospendi + elimina
+              : (!isSelf
+                  ? '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + '" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
+                    '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100;margin-left:4px" onclick="rimuoviMembro(' + i + ')">✕</button>'
+                  : '<span style="width:60px"></span>'))
         );
       list.appendChild(row);
     });
@@ -3383,6 +3388,57 @@ function salvaProfiloNome() {
 }
 
 var COLORS = ['#cc2200','#1a6b3c','#1a3a7a','#6b1a6b','#7a4a1a','#2a6b6b','#5a5a1a','#4a2a6b','#6b4a2a','#1a5a5a'];
+
+function openPromoteModal(i) {
+  if (!canPromoteUsers()) { showToast('// PERMESSO NEGATO', 'error'); return; }
+  var m = MEMBERS[i];
+  // Chi non è admin può promuovere al massimo a staff
+  var maxRole = isAdmin() ? ROLES.ADMIN : ROLES.STAFF;
+  var maxLevel = roleLabel(maxRole).level;
+  // Non può modificare utenti di livello uguale o superiore al proprio (se non admin)
+  if (!isAdmin()) {
+    var myLevel = roleLabel(currentUser.role).level;
+    var theirLevel = roleLabel(m.role).level;
+    if (theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
+  }
+  var allRoles = [
+    { value: ROLES.UTENTE,   label: 'Lv.1 · Utente' },
+    { value: ROLES.PREMIUM,  label: 'Lv.2 · Premium' },
+    { value: ROLES.AIUTANTE, label: 'Lv.3 · Aiutante' },
+    { value: ROLES.STAFF,    label: 'Lv.4 · Staff' },
+    { value: ROLES.ADMIN,    label: 'Lv.5 · Admin' }
+  ];
+  var opts = allRoles
+    .filter(function(r) { return roleLabel(r.value).level <= maxLevel; })
+    .map(function(r) {
+      return '<option value="' + r.value + '"' + (m.role === r.value ? ' selected' : '') + '>' + r.label + '</option>';
+    }).join('');
+
+  $id('modalTitle').textContent = 'CAMBIA LIVELLO — ' + m.name.toUpperCase();
+  $id('modalBody').innerHTML =
+    '<div style="font-family:var(--mono);font-size:8px;color:#888;letter-spacing:2px;margin-bottom:12px">' +
+    'Livello attuale: <span style="color:' + roleLabel(m.role).color + '">' + roleLabel(m.role).label + '</span></div>' +
+    '<div><label class="modal-label">// NUOVO LIVELLO</label>' +
+    '<select class="modal-input" id="pRuoloAcc">' + opts + '</select></div>';
+
+  window._modalCb = function() {
+    var nuovoRuolo = document.getElementById('pRuoloAcc').value;
+    if (nuovoRuolo === m.role) { closeModal(); return; }
+    // Doppio controllo livello al momento del salvataggio
+    if (!isAdmin()) {
+      var myLevel = roleLabel(currentUser.role).level;
+      if (roleLabel(nuovoRuolo).level >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
+    }
+    var vecchio = roleLabel(m.role).label;
+    MEMBERS[i].role = nuovoRuolo;
+    addLog('ha cambiato il livello di ' + m.name + ': ' + vecchio + ' → ' + roleLabel(nuovoRuolo).label);
+    saveMembers();
+    buildMembriList();
+    closeModal();
+    showToast('// LIVELLO AGGIORNATO ✓', 'success');
+  };
+  openModal();
+}
 
 function openNuovoMembroModal() {
   if (!canAddUser()) { showToast('// PERMESSO NEGATO', 'error'); return; }
