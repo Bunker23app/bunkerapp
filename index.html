@@ -232,8 +232,12 @@
   </div>
   <div class="login-form">
     <div>
+      <label class="login-label">// NOME UTENTE</label>
+      <input class="login-input" type="text" id="loginNome" placeholder="Il tuo nome" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginPw').focus()"/>
+    </div>
+    <div style="margin-top:10px">
       <label class="login-label">// PASSWORD</label>
-      <input class="login-input" type="password" id="loginPw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <input class="login-input" type="password" id="loginPw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
     <div class="login-error" id="loginErr"></div>
     <button class="login-btn" onclick="doLogin()">ENTRA</button>
