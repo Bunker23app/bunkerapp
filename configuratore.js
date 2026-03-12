@@ -829,16 +829,19 @@ function toggleNotificheGlobali(enabled) {
 }
 
 // Invia notifica push tramite Supabase Edge Function
-async function inviaNotificaPush(title, body, roleFilter) {
+// eventoId (opzionale): se passato, l'URL della notifica includerà ?evento=ID
+async function inviaNotificaPush(title, body, roleFilter, eventoId) {
   if (!NOTIFICHE_CONFIG.enabled) return;
   try {
+    var baseUrl = 'https://bunker23app.github.io/bunkerapp/';
+    var url = eventoId ? baseUrl + '?evento=' + encodeURIComponent(eventoId) : baseUrl;
     var res = await fetch('https://ndcpekgxnawxwbvfseba.supabase.co/functions/v1/send-push-notification', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kY3Bla2d4bmF3eHdidmZzZWJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NzU5NjksImV4cCI6MjA4ODQ1MTk2OX0.EmvG_iqAO3JcgCPk49fwEGcQQIOkeZhN076PuklD118',
       },
-      body: JSON.stringify({ title: title, body: body, role_filter: roleFilter }),
+      body: JSON.stringify({ title: title, body: body, role_filter: roleFilter, url: url }),
     });
     var data = await res.json();
     console.log('[push] notifica inviata a ' + (data.sent || 0) + ' dispositivi');
@@ -870,7 +873,7 @@ function notificaNuovoEvento(evento) {
   if (!evento.notifica_nuovo) return;
   var roleFilter = _getRoleFilterForEvent(evento.tipo);
   var body = (evento.ora ? evento.ora + ' · ' : '') + (evento.luogo || '');
-  inviaNotificaPush('🗓 NUOVO EVENTO: ' + (evento.nome || ''), body.trim(), roleFilter);
+  inviaNotificaPush('🗓 NUOVO EVENTO: ' + (evento.nome || ''), body.trim(), roleFilter, evento.id);
 }
 
 // Pianifica il reminder 5h prima (chiama inviaNotificaPush al momento giusto)
@@ -907,7 +910,8 @@ function pianificaReminderEvento(evento) {
       inviaNotificaPush(
         '⏰ TRA 5 ORE: ' + (evento.nome || ''),
         'Inizia alle ' + evento.ora + (evento.luogo ? ' · ' + evento.luogo : ''),
-        roleFilter
+        roleFilter,
+        evento.id
       );
     }, delay);
 

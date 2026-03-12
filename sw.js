@@ -16,7 +16,20 @@ self.addEventListener('push', function(event) {
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
+  var targetUrl = event.notification.data.url || 'https://bunker23app.github.io/bunkerapp/';
+
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      // Se c'è già una finestra aperta sull'app, naviga lì aggiornando l'URL
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if (client.url.indexOf('bunker23app.github.io') !== -1 && 'navigate' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Altrimenti apri una nuova finestra
+      return clients.openWindow(targetUrl);
+    })
   );
 });

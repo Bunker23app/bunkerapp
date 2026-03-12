@@ -123,6 +123,21 @@ let LOG = [];
 let currentUser = null;
 let guestMode = false; // true = ospite (solo calendario)
 
+// ID evento da aprire direttamente (proveniente da notifica push via ?evento=ID nell'URL)
+var _pendingEventoId = (function() {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var id = params.get('evento');
+    if (id) {
+      // Pulisce il parametro dall'URL senza ricaricare la pagina
+      var cleanUrl = window.location.pathname + window.location.hash;
+      history.replaceState(null, '', cleanUrl);
+      return id;
+    }
+  } catch(e) {}
+  return null;
+})();
+
 // ════════════════════════════════════════
 // UTILS
 // ════════════════════════════════════════
@@ -494,6 +509,10 @@ async function doLogin() {
   applyPageSections('bacheca');
   applyPageSections('info');
   navigate('screenHome');
+  // Se l'utente è arrivato cliccando una notifica push con ?evento=ID, naviga all'evento
+  if (_pendingEventoId) {
+    navigaAdEvento(_pendingEventoId);
+  }
 }
 
 function goToLogin() {
@@ -668,6 +687,29 @@ var calSel   = null;
 
 function calPrev() { calMonth--; if (calMonth < 1) { calMonth=12; calYear--; } calSel=null; buildCal(); }
 function calNext() { calMonth++; if (calMonth > 12) { calMonth=1; calYear++; } calSel=null; buildCal(); }
+
+// Naviga direttamente a un evento nel calendario dato il suo ID.
+// Usata per aprire l'evento corretto al click su notifica push.
+function navigaAdEvento(eventoId) {
+  if (!eventoId) return;
+  var ev = EVENTI.find(function(e) { return String(e.id) === String(eventoId); });
+  if (!ev) {
+    console.warn('[notifica] evento non trovato con id:', eventoId);
+    return;
+  }
+  // Imposta anno/mese/giorno nel calendario utente
+  calYear  = ev.anno;
+  calMonth = ev.mese;
+  calSel   = ev.giorno;
+  // Naviga alla schermata principale e poi al tab calendario
+  navigate('screenHome');
+  showTab('calendario');
+  // buildCal() viene chiamato da showTab('calendario'); dopo renderizza il dettaglio
+  setTimeout(function() {
+    renderCalDetail(ev.giorno, ev, false);
+  }, 50);
+  _pendingEventoId = null;
+}
 
 function tipiVisibiliPerRole(role) {
   if (role === ROLES.STAFF || role === ROLES.ADMIN)   return ['invito','premium','privato','segreto','consigliato'];
@@ -3842,6 +3884,11 @@ document.addEventListener('DOMContentLoaded', function() {
       // Controlla se c'è un token invito nell'URL
       if (typeof checkInviteToken === 'function') {
         checkInviteToken();
+      }
+      // Se c'è un evento pendente da notifica push e l'utente è già loggato, naviga subito.
+      // Se non è loggato, _pendingEventoId rimane valorizzato e verrà usato in doLogin().
+      if (_pendingEventoId && currentUser) {
+        navigaAdEvento(_pendingEventoId);
       }
       console.log('Supabase: tutti i dati caricati');
     } catch(e) {
