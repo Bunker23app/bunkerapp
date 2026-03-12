@@ -1204,6 +1204,31 @@ function initRealtime() {
         existing.password = dm.password_hash;
         existing.photo = dm.foto_url || null;
       }
+      // Se il cambio riguarda l'utente corrente → aggiorna currentUser e riavvia connessione
+      if (currentUser && currentUser.name === dm.name) {
+        var oldRole = currentUser.role;
+        currentUser.role = dm.role;
+        currentUser.color = dm.color;
+        currentUser.sospeso = dm.sospeso || false;
+        // Se il ruolo è cambiato tra staff/admin e utente normale → switch realtime ↔ polling
+        var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
+        var isNowStaff = (dm.role === 'admin' || dm.role === 'staff');
+        if (wasStaff !== isNowStaff) {
+          console.log('[realtime] cambio ruolo rilevato (' + oldRole + ' → ' + dm.role + ') · riavvio connessione');
+          if (isNowStaff) {
+            stopPolling();
+            initRealtime();
+          } else {
+            stopRealtime();
+            initPolling();
+          }
+        }
+        // Aggiorna UI ruolo ovunque visibile
+        var rlEl = document.getElementById('staffRole');
+        if (rlEl && typeof roleLabel === 'function') rlEl.textContent = roleLabel(dm.role).label;
+        if (typeof buildProfilo === 'function' && document.getElementById('tab-profilo') &&
+            document.getElementById('tab-profilo').style.display !== 'none') buildProfilo();
+      }
       buildMembriList();
     })
     .subscribe(function(status) { console.log('[realtime] members status:', status); });
@@ -1280,15 +1305,28 @@ function stopPolling() {
 }
 
 // Controllo stato account per staff/admin (non fanno il polling pubblico ma devono
-// essere disconnessi se eliminati o sospesi)
+// essere disconnessi se eliminati o sospesi, e aggiornati se il ruolo cambia)
 async function _checkAccountStatus() {
   if (!_sbReady || !currentUser) return;
   try {
-    var res = await getSupabase().from('members').select('name,sospeso').eq('name', currentUser.name).single();
+    var res = await getSupabase().from('members').select('name,sospeso,role').eq('name', currentUser.name).single();
     if (res.error || !res.data) {
       _forceLogout('// ACCOUNT ELIMINATO · CONTATTARE UN AMMINISTRATORE');
     } else if (res.data.sospeso) {
       _forceLogout('// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE');
+    } else if (res.data.role && res.data.role !== currentUser.role) {
+      // Ruolo cambiato → aggiorna e switch connessione
+      var oldRole = currentUser.role;
+      currentUser.role = res.data.role;
+      var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
+      var isNowStaff = (res.data.role === 'admin' || res.data.role === 'staff');
+      console.log('[account-check] cambio ruolo: ' + oldRole + ' → ' + res.data.role);
+      if (wasStaff !== isNowStaff) {
+        if (isNowStaff) { stopPolling(); initRealtime(); }
+        else            { stopRealtime(); initPolling(); }
+      }
+      showToast('// RUOLO AGGIORNATO: ' + res.data.role.toUpperCase(), 'success');
+      if (typeof buildAll === 'function') buildAll();
     }
   } catch(e) { console.warn('[account-check]', e.message); }
 }
@@ -1301,16 +1339,28 @@ async function _pollPublicData() {
     // ── Controllo stato account utente corrente ──────────────────────────
     if (currentUser) {
       try {
-        var accountCheck = await sb.from('members').select('name,sospeso').eq('name', currentUser.name).single();
+        var accountCheck = await sb.from('members').select('name,sospeso,role').eq('name', currentUser.name).single();
         if (accountCheck.error || !accountCheck.data) {
-          // Utente non trovato → eliminato
           _forceLogout('// ACCOUNT ELIMINATO · CONTATTARE UN AMMINISTRATORE');
           return;
         }
         if (accountCheck.data.sospeso) {
-          // Utente sospeso
           _forceLogout('// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE');
           return;
+        }
+        if (accountCheck.data.role && accountCheck.data.role !== currentUser.role) {
+          var oldRole = currentUser.role;
+          currentUser.role = accountCheck.data.role;
+          var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
+          var isNowStaff = (accountCheck.data.role === 'admin' || accountCheck.data.role === 'staff');
+          console.log('[poll] cambio ruolo: ' + oldRole + ' → ' + accountCheck.data.role);
+          if (wasStaff !== isNowStaff) {
+            if (isNowStaff) { stopPolling(); initRealtime(); }
+            else            { stopRealtime(); initPolling(); }
+          }
+          showToast('// RUOLO AGGIORNATO: ' + accountCheck.data.role.toUpperCase(), 'success');
+          if (typeof buildAll === 'function') buildAll();
+          return; // il buildAll si occupa già di aggiornare tutto
         }
       } catch(e) { console.warn('[poll account-check]', e.message); }
     }
