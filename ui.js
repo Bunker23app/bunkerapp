@@ -3668,9 +3668,9 @@ document.addEventListener('DOMContentLoaded', function() {
   updateHomeAccessLevel();
   startEventoBannerTimer();
 
-  // Ripristina sessione
+  // Ripristina sessione (skip se c'è un invito pendente)
   try {
-    var savedSession = localStorage.getItem('bunker23_session');
+    var savedSession = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
     if (savedSession) {
       var sess = JSON.parse(savedSession);
       var elapsed = Date.now() - (sess.ts || 0);
@@ -4242,6 +4242,13 @@ function stampaProgrammaEventi() {
 // SISTEMA INVITI — QR CODE MONOUSO
 // ════════════════════════════════════════
 
+// Token invito rilevato all'avvio (prima di qualsiasi navigazione)
+var _pendingInviteToken = (function() {
+  var p = new URLSearchParams(window.location.search);
+  var t = p.get('invite');
+  if (t) window.history.replaceState({}, document.title, window.location.pathname);
+  return t || null;
+})();
 var _currentInviteToken = null;
 
 // Genera stringa casuale per il token
@@ -4378,23 +4385,10 @@ async function revokaInvito(id) {
 
 var _inviteTokenAttivo = null;
 
-// Controlla all'avvio se c'è un token nell'URL
+// Controlla all'avvio se c'è un token invito (già letto in _pendingInviteToken)
 async function checkInviteToken() {
-  var params = new URLSearchParams(window.location.search);
-  var token = params.get('invite');
-  if (!token) return;
-
-  // Rimuovi il token dall'URL senza ricaricare la pagina
-  window.history.replaceState({}, document.title, window.location.pathname);
-
-  if (!_sbReady) {
-    // Aspetta che _sbReady sia true (max 5 secondi)
-    var attempts = 0;
-    while (!_sbReady && attempts < 50) {
-      await new Promise(function(r){ setTimeout(r, 100); });
-      attempts++;
-    }
-  }
+  if (!_pendingInviteToken) return;
+  var token = _pendingInviteToken;
 
   try {
     var res = await getSupabase()
@@ -4414,6 +4408,7 @@ async function checkInviteToken() {
 
     // Token valido — mostra schermata registrazione
     _inviteTokenAttivo = inv;
+    _pendingInviteToken = null;
     navigate('screenRegistrazione');
   } catch(e) {
     showToast('// ERRORE VERIFICA INVITO', 'error');
