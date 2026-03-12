@@ -187,10 +187,16 @@ function _checkPerm(perm) {
 function canViewContatori()  { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_view  : ROLES.STAFF); }
 function canResetContatori() { return _checkPerm(typeof WIDGET_PERMS !== 'undefined' ? WIDGET_PERMS.contatori_reset : ROLES.STAFF); }
 function canAddUser() {
-  // Admin può sempre creare profili
+  // Solo admin può creare profili (tramite modale) o inviti QR
   if (isAdmin()) return true;
-  // Altri ruoli: solo se il flag canCreateProfiles è attivo sul loro account
-  if (currentUser && currentUser.canCreateProfiles) return true;
+  if (isStaff()) return true;
+  return false;
+}
+
+// Controlla se l'utente corrente può modificare il livello di altri utenti
+function canPromoteUsers() {
+  if (isAdmin()) return true;
+  if (currentUser && currentUser.canPromote) return true;
   return false;
 }
 
@@ -1053,32 +1059,41 @@ function isEventoInCorso(e) {
   var todayGiorno = now.getDate();
   var nowMinutes  = now.getHours() * 60 + now.getMinutes();
 
-  var startDate = new Date(e.anno, e.mese-1, e.giorno);
-  var endDate = (e.giornoFine && e.meseFine && e.annoFine)
-    ? new Date(e.annoFine, e.meseFine-1, e.giornoFine)
-    : startDate;
-  var todayDate = new Date(todayAnno, todayMese-1, todayGiorno);
-
-  // Oggi deve essere compreso tra data inizio e data fine
-  if (todayDate < startDate || todayDate > endDate) return false;
-
   // Calcola ora inizio in minuti
-  var oraParts = (e.ora || '').split(':');
+  var oraParts = (e.ora || '00:00').split(':');
   var oraInizioMin = (parseInt(oraParts[0])||0) * 60 + (parseInt(oraParts[1])||0);
 
-  // Se c'è ora_fine, controlla che l'ora attuale sia compresa tra ora_inizio e ora_fine
-  // Questa verifica vale sia per il giorno di inizio che per i giorni intermedi
-  if (e.ora_fine) {
-    var oraFineParts = e.ora_fine.split(':');
-    var oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
-    // Gestisci eventi che finiscono dopo mezzanotte (ora fine < ora inizio)
-    if (oraFineMin < oraInizioMin) oraFineMin += 24 * 60;
-    var nowAdj = nowMinutes < oraInizioMin ? nowMinutes + 24 * 60 : nowMinutes;
-    return nowAdj >= oraInizioMin && nowAdj <= oraFineMin;
+  // Calcola ora fine in minuti
+  // Se non specificata → 23:59 del giorno di inizio
+  // Se specificata ed è precedente all'ora di inizio → giorno successivo (es. 22:30→02:00)
+  var oraFineMin;
+  var oraFineStr = e.ora_fine || '';
+  if (oraFineStr) {
+    var oraFineParts = oraFineStr.split(':');
+    oraFineMin = (parseInt(oraFineParts[0])||0) * 60 + (parseInt(oraFineParts[1])||0);
+  } else {
+    oraFineMin = 23 * 60 + 59; // 23:59 default
   }
 
-  // Nessuna ora_fine: se è il giorno di inizio o un giorno intermedio → in corso
-  return true;
+  // Calcola data/ora inizio e fine come oggetti Date assoluti
+  var startDT = new Date(e.anno, e.mese-1, e.giorno, Math.floor(oraInizioMin/60), oraInizioMin%60, 0);
+
+  // Data fine: parte dalla data di fine esplicita se presente, altrimenti dalla data inizio
+  var baseFinDate;
+  if (e.giornoFine && e.meseFine && e.annoFine) {
+    baseFinDate = new Date(e.annoFine, e.meseFine-1, e.giornoFine);
+  } else {
+    baseFinDate = new Date(e.anno, e.mese-1, e.giorno);
+    // Se ora_fine < ora_inizio e non c'è data fine esplicita → giorno dopo
+    if (oraFineStr && oraFineMin < oraInizioMin) {
+      baseFinDate.setDate(baseFinDate.getDate() + 1);
+    }
+  }
+  var endDT = new Date(baseFinDate.getFullYear(), baseFinDate.getMonth(), baseFinDate.getDate(),
+    Math.floor(oraFineMin/60), oraFineMin%60, 0);
+
+  // L'evento è in corso se now è compreso tra startDT e endDT
+  return now >= startDT && now <= endDT;
 }
 
 // ════════════════════════════════════════
@@ -3281,7 +3296,7 @@ function buildMembriList() {
         '<div style="flex:1">' +
           '<div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:' + (m.sospeso ? '#555' : 'var(--white)') + '">' + m.name.toUpperCase() +
             (m.sospeso ? '<span style="font-family:var(--mono);font-size:7px;color:#cc2200;letter-spacing:1px;margin-left:6px">⛔ SOSPESO</span>' : '') +
-            (m.canCreateProfiles ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px">✚ CREA PROFILI</span>' : '') +
+            (m.canPromote ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px">⬆ PROMUOVI</span>' : '') +
           '</div>' +
           '<div style="font-family:monospace;font-size:8px;color:' + rl.color + ';letter-spacing:1px">' + rl.label + '</div>' +
         '</div>' +
@@ -3434,10 +3449,10 @@ function openEditMembroModal(i) {
     '<input type="checkbox" id="mSospeso"' + (m.sospeso ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
     '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.sospeso ? '#cc2200' : '#888') + '">ACCOUNT SOSPESO</span>' +
     '</label></div>' +
-    '<div style="margin-top:8px;padding:10px;border:1px solid ' + (m.canCreateProfiles ? '#22cc44' : '#333') + ';border-radius:3px;background:' + (m.canCreateProfiles ? 'rgba(34,204,68,0.06)' : 'transparent') + '">' +
+    '<div style="margin-top:8px;padding:10px;border:1px solid ' + (m.canPromote ? '#22cc44' : '#333') + ';border-radius:3px;background:' + (m.canPromote ? 'rgba(34,204,68,0.06)' : 'transparent') + '">' +
     '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">' +
-    '<input type="checkbox" id="mCanCreate"' + (m.canCreateProfiles ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
-    '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.canCreateProfiles ? '#22cc44' : '#888') + '">PU\xf2 CREARE NUOVI PROFILI</span>' +
+    '<input type="checkbox" id="mCanPromote"' + (m.canPromote ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"/>' +
+    '<span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:' + (m.canPromote ? '#22cc44' : '#888') + '">PU\xd2 MODIFICARE IL LIVELLO UTENTI</span>' +
     '</label></div>';
 
   // Attiva bottoni foto membro
@@ -3487,7 +3502,7 @@ function openEditMembroModal(i) {
     var pw      = document.getElementById('mPwAcc').value.trim();
     var ruolo   = document.getElementById('mRuoloAcc').value;
     var sospeso = document.getElementById('mSospeso').checked;
-    var canCreate = document.getElementById('mCanCreate').checked;
+    var canPromote = document.getElementById('mCanPromote') ? document.getElementById('mCanPromote').checked : false;
     // Controlla nome univoco (case-insensitive) se è stato cambiato
     if (nome.toLowerCase() !== m.name.toLowerCase()) {
       var dup = MEMBERS.find(function(mem, idx) {
@@ -3500,9 +3515,9 @@ function openEditMembroModal(i) {
     MEMBERS[i].initial          = nome.charAt(0).toUpperCase();
     MEMBERS[i].role             = ruolo;
     MEMBERS[i].sospeso          = sospeso;
-    MEMBERS[i].canCreateProfiles = canCreate;
+    MEMBERS[i].canPromote = canPromote;
     if (pw) sha256(pw).then(function(h){ MEMBERS[i].password = h; saveMembers(); });
-    addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : '') + (canCreate ? ' [PUÒ CREARE PROFILI]' : ''));
+    addLog('ha modificato account: ' + nome + (sospeso ? ' [SOSPESO]' : '') + (canPromote ? ' [PUÒ PROMUOVERE]' : ''));
     saveMembers();
     buildMembriList();
     closeModal();
@@ -3540,11 +3555,16 @@ function toggleSospesoMembro(i) {
   var theirLevel = roleLabel(m.role).level;
   if (!isAdmin() && theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
   var newSospeso = !m.sospeso;
-  MEMBERS[i].sospeso = newSospeso;
-  addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
-  saveMembers();
-  buildMembriList();
-  showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
+  var azione = newSospeso ? 'Sospendere' : 'Riattivare';
+  var titolo = newSospeso ? 'SOSPENDI ACCOUNT' : 'RIATTIVA ACCOUNT';
+  var btnLabel = newSospeso ? 'SOSPENDI' : 'RIATTIVA';
+  showConfirm(azione + " l'account di " + m.name + '?', function() {
+    MEMBERS[i].sospeso = newSospeso;
+    addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
+    saveMembers();
+    buildMembriList();
+    showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
+  }, titolo, btnLabel);
 }
 
 
@@ -4688,6 +4708,7 @@ async function doRegistrazione() {
       role: 'utente',
       sospeso: false,
       can_create_profiles: false,
+      can_promote: false,
     });
     if (resMem.error) {
       if (resMem.error.message.includes('unique') || resMem.error.message.includes('duplicate')) {
