@@ -13,6 +13,7 @@ var WIDGET_CONFIG = [
   { id:'cerca',      icon:'🔍', label:'CERCA',            enabled:true },
   { id:'log',        icon:'📋', label:'LOG EVENTI',       enabled:true, adminOnly:true },
   { id:'contatori',  icon:'🔢', label:'CONTATORI',        enabled:true, staffOnly:true },
+  { id:'inviti',     icon:'🎟', label:'INVITI',            enabled:true },
 ];
 
 var TAB_CONFIG = [
@@ -26,6 +27,7 @@ var TAB_CONFIG = [
   { id:'log',        icon:'📋', label:'LOG',          enabled:true, adminOnly:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',      enabled:true },
   { id:'contatori',  icon:'🔢', label:'CONTATORI',    enabled:true, staffOnly:true },
+  { id:'inviti',     icon:'🎟', label:'INVITI',       enabled:true },
 ];
 
 var BENVENUTO_TEXT = '';
