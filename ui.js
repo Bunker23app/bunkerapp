@@ -628,7 +628,14 @@ function showTab(name) {
   }
   // Rebuild views that depend on role
   if (name === 'calendario') buildSCal();
-  if (name === 'profilo') buildProfilo();
+  if (name === 'profilo') {
+    buildProfilo();
+    // Assicura visibilità gestione account per staff e admin
+    var _ga = document.getElementById('gestioneAccountSection');
+    if (_ga && currentUser && (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN)) {
+      _ga.style.display = 'block';
+    }
+  }
   if (name === 'configura') buildConfigura();
   if (name === 'dashboard') { applyWidgetConfig(); applyTabConfig(); applyBenvenuto(); }
   if (name === 'magazzino') {
@@ -3060,6 +3067,11 @@ function buildProfilo() {
   if (staffNm) staffNm.textContent = currentUser.name.toUpperCase();
   if (nm) nm.textContent = currentUser.name.toUpperCase();
   if (rl) rl.textContent = roleLabel(currentUser.role).label;
+  // Popola campo cambio nome
+  var nomeInput = document.getElementById('profiloNomeInput');
+  if (nomeInput) nomeInput.value = currentUser.name;
+  var nomeErr = document.getElementById('profiloNomeError');
+  if (nomeErr) nomeErr.textContent = '';
 
   // Pulsante carica foto
   var fp = document.getElementById('fotoProfilo');
@@ -3207,6 +3219,41 @@ async function cambiaPassword() {
 // ════════════════════════════════════════
 // CONFIGURATORE ADMIN → caricato da configuratore.js
 // ════════════════════════════════════════
+
+function salvaProfiloNome() {
+  if (!currentUser) return;
+  var nomeInput = document.getElementById('profiloNomeInput');
+  var errEl = document.getElementById('profiloNomeError');
+  if (!nomeInput || !errEl) return;
+  var nome = nomeInput.value.trim();
+  if (!nome) { errEl.textContent = '// INSERISCI UN NOME'; return; }
+  if (nome.length < 2) { errEl.textContent = '// NOME TROPPO CORTO (min 2 caratteri)'; return; }
+  if (nome.toLowerCase() === currentUser.name.toLowerCase()) { errEl.textContent = '// È GIÀ IL TUO NOME ATTUALE'; return; }
+  // Controlla duplicati
+  var dup = MEMBERS.find(function(m) {
+    return m.name !== currentUser.name && m.name.toLowerCase() === nome.toLowerCase();
+  });
+  if (dup) { errEl.textContent = '// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO'; return; }
+  // Salva
+  currentUser._oldName = currentUser.name;
+  currentUser.name = nome;
+  currentUser.initial = nome.charAt(0).toUpperCase();
+  addLog('ha cambiato il nome in: ' + nome);
+  saveMembers();
+  // Aggiorna UI
+  var nm = document.getElementById('profiloNome');
+  if (nm) nm.textContent = nome.toUpperCase();
+  var staffNm = document.getElementById('staffName');
+  if (staffNm) staffNm.textContent = nome.toUpperCase();
+  renderAvatar(document.getElementById('profiloAvatar'), currentUser);
+  renderAvatar(document.getElementById('staffAvatar'), currentUser);
+  // Aggiorna sessione localStorage
+  try { localStorage.setItem('bunker23_session', JSON.stringify({ name: nome, role: currentUser.role, ts: Date.now() })); } catch(e) {}
+  errEl.style.color = 'var(--green)';
+  errEl.textContent = '// NOME AGGIORNATO ✓';
+  showToast('// NOME AGGIORNATO ✓', 'success');
+  setTimeout(function() { errEl.textContent = ''; errEl.style.color = 'var(--red)'; }, 3000);
+}
 
 var COLORS = ['#cc2200','#1a6b3c','#1a3a7a','#6b1a6b','#7a4a1a','#2a6b6b','#5a5a1a','#4a2a6b','#6b4a2a','#1a5a5a'];
 
