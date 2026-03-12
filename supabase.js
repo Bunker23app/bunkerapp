@@ -765,6 +765,7 @@ var _calendarioChannel= null;
 var _spesaChannel     = null;
 var _pagamentiChannel = null;
 var _lavoriChannel    = null;
+var _membersChannel   = null;
 var _realtimeActive   = false;
 // Set di "author|testo" dei messaggi inviati da noi, per bloccare il realtime echo
 var _pendingChatKeys = {};
@@ -776,7 +777,7 @@ var _pendingMagazzinoIds = {};
 function stopRealtime() {
   if (!_realtimeActive) return;
   var sb = getSupabase();
-  var channels = [_chatChannel, _logChannel, _magazzinoChannel, _calendarioChannel, _spesaChannel, _pagamentiChannel, _lavoriChannel];
+  var channels = [_chatChannel, _logChannel, _magazzinoChannel, _calendarioChannel, _spesaChannel, _pagamentiChannel, _lavoriChannel, _membersChannel];
   channels.forEach(function(ch) {
     if (ch) {
       try { sb.removeChannel(ch); } catch(e) {}
@@ -789,6 +790,7 @@ function stopRealtime() {
   _spesaChannel = null;
   _pagamentiChannel = null;
   _lavoriChannel = null;
+  _membersChannel   = null;
   _realtimeActive = false;
   console.log('[realtime] tutti i canali chiusi');
 }
@@ -1137,6 +1139,36 @@ function initRealtime() {
       }
     })
     .subscribe(function(status) { console.log('[DIAG][lavori] subscribe status:', status); });
+
+  // ── MEMBERS realtime — INSERT (nuovo utente tramite invito) ──────────────
+  _membersChannel = sb.channel('members-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'members' }, function(payload) {
+      var dm = payload.new; if (!dm) return;
+      if (MEMBERS.some(function(m){ return m.name === dm.name; })) return;
+      MEMBERS.push({
+        name: dm.name, initial: dm.initial, color: dm.color,
+        password: dm.password_hash, role: dm.role,
+        photo: dm.foto_url || null, sospeso: dm.sospeso || false,
+        canCreateProfiles: dm.can_create_profiles || false,
+      });
+      buildMembriList();
+      updateDash();
+      console.log('[realtime] nuovo membro registrato: ' + dm.name);
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'members' }, function(payload) {
+      var dm = payload.new; if (!dm) return;
+      var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
+      if (existing) {
+        existing.role = dm.role;
+        existing.color = dm.color;
+        existing.sospeso = dm.sospeso || false;
+        existing.canCreateProfiles = dm.can_create_profiles || false;
+        existing.password = dm.password_hash;
+        existing.photo = dm.foto_url || null;
+      }
+      buildMembriList();
+    })
+    .subscribe(function(status) { console.log('[realtime] members status:', status); });
 }
 
 // ── HOOKS LOGIN/LOGOUT ───────────────────────────────────────────────────────
