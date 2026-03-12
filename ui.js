@@ -702,11 +702,22 @@ function navigaAdEvento(eventoId) {
   calMonth = ev.mese;
   calSel   = ev.giorno;
 
-  // Per tutti gli utenti (staff inclusi) la notifica apre il calendario della home
-  navigate('screenHome');
+  // Per tutti gli utenti la notifica apre il calendario della home.
+  // Se screenHome è già la schermata attiva navigate() non fa nulla,
+  // quindi chiamiamo buildCal() direttamente in ogni caso.
+  var homeScreen = document.getElementById('screenHome');
+  var isAlreadyHome = homeScreen && homeScreen.classList.contains('active');
+  if (!isAlreadyHome) {
+    navigate('screenHome');
+  }
+  // Piccolo delay per lasciar completare l'eventuale animazione di navigate,
+  // poi buildCal ridisegna con calSel impostato e apre il dettaglio evento.
   setTimeout(function() {
     buildCal();
-  }, 80);
+    // Scrolla il pannello dettaglio in vista
+    var det = document.getElementById('calDetail');
+    if (det) det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, isAlreadyHome ? 0 : 80);
   _pendingEventoId = null;
 }
 
