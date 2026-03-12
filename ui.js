@@ -295,6 +295,7 @@ function openProfiloUtente() {
         }
       }
     }
+    if (nome !== currentUser.name) currentUser._oldName = currentUser.name;
     currentUser.name = nome;
     currentUser.initial = nome.charAt(0).toUpperCase();
     addLog('ha aggiornato il profilo');
@@ -3098,9 +3099,9 @@ function buildProfilo() {
     };
   }
 
-  // Gestione account: solo admin
+  // Gestione account: admin e staff (con permessi diversi)
   var ga = document.getElementById('gestioneAccountSection');
-  if (ga) ga.style.display = currentUser.role === ROLES.ADMIN ? 'block' : 'none';
+  if (ga) ga.style.display = isStaff() ? 'block' : 'none';
   var es = document.getElementById('esportaSection');
   if (es) es.style.display = currentUser.role === ROLES.ADMIN ? 'block' : 'none';
 
@@ -3160,8 +3161,16 @@ function buildMembriList() {
           '</div>' +
           '<div style="font-family:monospace;font-size:8px;color:' + rl.color + ';letter-spacing:1px">' + rl.label + '</div>' +
         '</div>' +
-        '<button class="edit-btn-small visible" onclick="openEditMembroModal(' + i + ')" style="margin-right:4px">✏</button>' +
-        (!isSelf ? '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>' : '<span style="width:28px"></span>');
+        (isAdmin()
+          // Admin: pulsante edit completo + elimina
+          ? '<button class="edit-btn-small visible" onclick="openEditMembroModal(' + i + ')" style="margin-right:4px">✏</button>' +
+            (!isSelf ? '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>' : '<span style="width:28px"></span>')
+          // Staff: solo toggle sospeso + elimina (senza edit nome/password)
+          : (!isSelf
+              ? '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + '" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
+                '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100;margin-left:4px" onclick="rimuoviMembro(' + i + ')">✕</button>'
+              : '<span style="width:60px"></span>')
+        );
       list.appendChild(row);
     });
   });
@@ -3327,6 +3336,7 @@ function openEditMembroModal(i) {
       });
       if (dup) { showToast('// NICKNAME GIÀ UTILIZZATO — SCEGLINE UN ALTRO', 'error'); return; }
     }
+    if (nome !== m.name) MEMBERS[i]._oldName = m.name;
     MEMBERS[i].name             = nome;
     MEMBERS[i].initial          = nome.charAt(0).toUpperCase();
     MEMBERS[i].role             = ruolo;
@@ -3342,9 +3352,14 @@ function openEditMembroModal(i) {
 }
 
 function rimuoviMembro(i) {
-  if (currentUser && currentUser.role !== ROLES.ADMIN) return;
-  var nome = MEMBERS[i].name;
-  if (MEMBERS[i].name === currentUser.name) return;
+  if (!isStaff()) return;
+  // Lo staff può eliminare solo utenti di livello inferiore (non altri staff o admin)
+  var m = MEMBERS[i];
+  var myLevel = roleLabel(currentUser.role).level;
+  var theirLevel = roleLabel(m.role).level;
+  if (currentUser && m.name === currentUser.name) return;
+  if (!isAdmin() && theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
+  var nome = m.name;
   showConfirm('Rimuovere l\'account di ' + nome + '? L\'operazione è irreversibile.', async function() {
     addLog('ha rimosso account: ' + nome);
     // Cancella da Supabase prima di rimuovere dall'array
@@ -3356,6 +3371,21 @@ function rimuoviMembro(i) {
     buildMembriList();
     showToast('// ACCOUNT RIMOSSO', 'error');
   }, 'RIMUOVI ACCOUNT', 'RIMUOVI');
+}
+
+// Sospendi/riattiva membro — usato dallo staff (senza modal completo)
+function toggleSospesoMembro(i) {
+  if (!isStaff()) return;
+  var m = MEMBERS[i];
+  var myLevel = roleLabel(currentUser.role).level;
+  var theirLevel = roleLabel(m.role).level;
+  if (!isAdmin() && theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
+  var newSospeso = !m.sospeso;
+  MEMBERS[i].sospeso = newSospeso;
+  addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
+  saveMembers();
+  buildMembriList();
+  showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
 }
 
 

@@ -279,38 +279,7 @@ function buildPermPagine(container) {
     });
   });
 
-  // ── Separatore ──
-  var sep2 = document.createElement('div');
-  sep2.style.cssText = 'border-top:1px solid #1a1a1a;margin:14px 0 10px';
-  container.appendChild(sep2);
-
-  // ── Sezione: Aggiunta nuovi utenti ──
-  var hAdd = document.createElement('div');
-  hAdd.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#444;margin:0 0 6px;text-transform:uppercase';
-  hAdd.textContent = '// \uD83D\uDC65 AGGIUNTA NUOVI UTENTI';
-  container.appendChild(hAdd);
-
-  var addDesc = document.createElement('div');
-  addDesc.style.cssText = 'font-family:var(--mono);font-size:7px;letter-spacing:1px;color:#555;margin:0 0 8px;line-height:1.5';
-  addDesc.textContent = 'Di default solo gli Admin possono aggiungere nuovi utenti. Abilita per permetterlo anche allo Staff.';
-  container.appendChild(addDesc);
-
-  var addRow = document.createElement('div');
-  addRow.className = 'cfg-perm-row';
-  var staffCanAdd = (ADD_USER_PERM === ROLES.STAFF);
-  addRow.innerHTML =
-    '<div>' +
-      '<div class="cfg-perm-label" style="font-size:9px">Staff pu\xF2 aggiungere utenti</div>' +
-      '<div id="cfgAddUserDesc" style="font-family:var(--mono);font-size:7px;color:#555;letter-spacing:1px;margin-top:2px">' +
-        (staffCanAdd ? 'Abilitato: Admin + Staff' : 'Solo Admin') +
-      '</div>' +
-    '</div>' +
-    '<label class="cfg-toggle" style="flex-shrink:0">' +
-      '<input type="checkbox" id="cfgAddUserStaff"' + (staffCanAdd ? ' checked' : '') +
-      ' onchange="ADD_USER_PERM=this.checked?\'staff\':\'admin\';var d=document.getElementById(\'cfgAddUserDesc\');if(d)d.textContent=this.checked?\'Abilitato: Admin + Staff\':\'Solo Admin\';">' +
-      '<span class="cfg-toggle-slider"></span>' +
-    '</label>';
-  container.appendChild(addRow);
+  // (sezione aggiunta nuovi utenti rimossa — gestita dal sistema QR)
 }
 
 function salvaPermPagine() {

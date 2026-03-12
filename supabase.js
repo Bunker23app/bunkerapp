@@ -95,8 +95,18 @@ function saveMembers() {
         };
       });
       // Upsert uno alla volta per rispettare unique su name
+      // Se il membro ha _oldName (nome cambiato) → UPDATE WHERE name=oldName
+      // altrimenti → upsert normale (inserisce se non esiste, aggiorna se esiste)
       for (var i = 0; i < rows.length; i++) {
-        var res = await getSupabase().from('members').upsert(rows[i], { onConflict: 'name' });
+        var m0 = MEMBERS[i];
+        var res;
+        if (m0 && m0._oldName && m0._oldName !== m0.name) {
+          // Nome cambiato: aggiorna la riga esistente senza creare duplicati
+          res = await getSupabase().from('members').update(rows[i]).eq('name', m0._oldName);
+          if (!res.error) delete m0._oldName; // pulizia dopo successo
+        } else {
+          res = await getSupabase().from('members').upsert(rows[i], { onConflict: 'name' });
+        }
         if (res.error) console.warn('[sb.members]', res.error.message);
         // Aggiorna ruolo e sospensione nelle push_subscriptions
         var m = MEMBERS[i];
@@ -1229,15 +1239,39 @@ var _pollingTimer  = null;
 var _pollingActive = false;
 var POLLING_INTERVAL = 3 * 60 * 1000; // 3 minuti
 
+// Logout forzato con messaggio dedicato (es. account eliminato o sospeso)
+function _forceLogout(motivo) {
+  stopPolling();
+  showToast(motivo, 'error');
+  setTimeout(function() {
+    if (typeof onUserLogout === 'function') onUserLogout();
+    var ss = document.getElementById('screenStaff');
+    if (ss) ss.classList.remove('is-admin');
+    currentUser = null;
+    guestMode = false;
+    try { localStorage.removeItem('bunker23_session'); } catch(e) {}
+    if (typeof buildAll === 'function') buildAll();
+    if (typeof updateHomeAccessLevel === 'function') updateHomeAccessLevel();
+    if (typeof updatePageCfgBtns === 'function') updatePageCfgBtns();
+    if (typeof navigate === 'function') navigate('screenSplash');
+  }, 3000);
+}
+
 function initPolling() {
   if (_pollingActive) return; // già attivo
   var role = currentUser && currentUser.role ? currentUser.role : '';
   // Polling solo per utenti non-staff (guest, utente, premium, aiutante)
   var isStaffRole = (role === 'admin' || role === 'staff');
-  if (isStaffRole) return;
-  _pollingActive = true;
-  console.log('Polling background attivo ogni 3 min (ruolo: ' + (role || 'guest') + ')');
-  _pollingTimer = setInterval(function() { _pollPublicData(); }, POLLING_INTERVAL);
+  if (!isStaffRole) {
+    _pollingActive = true;
+    console.log('Polling background attivo ogni 3 min (ruolo: ' + (role || 'guest') + ')');
+    _pollingTimer = setInterval(function() { _pollPublicData(); }, POLLING_INTERVAL);
+  } else {
+    // Staff/admin usano realtime ma il controllo account va fatto comunque
+    _pollingActive = true;
+    _pollingTimer = setInterval(function() { _checkAccountStatus(); }, POLLING_INTERVAL);
+    console.log('Account-check attivo ogni 3 min (ruolo: ' + role + ')');
+  }
 }
 
 function stopPolling() {
@@ -1245,10 +1279,43 @@ function stopPolling() {
   _pollingActive = false;
 }
 
+// Controllo stato account per staff/admin (non fanno il polling pubblico ma devono
+// essere disconnessi se eliminati o sospesi)
+async function _checkAccountStatus() {
+  if (!_sbReady || !currentUser) return;
+  try {
+    var res = await getSupabase().from('members').select('name,sospeso').eq('name', currentUser.name).single();
+    if (res.error || !res.data) {
+      _forceLogout('// ACCOUNT ELIMINATO · CONTATTARE UN AMMINISTRATORE');
+    } else if (res.data.sospeso) {
+      _forceLogout('// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE');
+    }
+  } catch(e) { console.warn('[account-check]', e.message); }
+}
+
 async function _pollPublicData() {
   if (!_sbReady) return;
   try {
     var sb = getSupabase();
+
+    // ── Controllo stato account utente corrente ──────────────────────────
+    if (currentUser) {
+      try {
+        var accountCheck = await sb.from('members').select('name,sospeso').eq('name', currentUser.name).single();
+        if (accountCheck.error || !accountCheck.data) {
+          // Utente non trovato → eliminato
+          _forceLogout('// ACCOUNT ELIMINATO · CONTATTARE UN AMMINISTRATORE');
+          return;
+        }
+        if (accountCheck.data.sospeso) {
+          // Utente sospeso
+          _forceLogout('// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE');
+          return;
+        }
+      } catch(e) { console.warn('[poll account-check]', e.message); }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Fetch parallelo: config (bacheca, info, consigliati, valutazioni, suggerimenti),
     // calendario, valutazioni, suggerimenti
     var results = await Promise.all([
