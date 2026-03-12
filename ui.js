@@ -654,29 +654,6 @@ function showTab(name) {
     if (_ga && currentUser && (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN)) {
       _ga.style.display = 'block';
     }
-    // Ricarica membri freschi da Supabase ogni volta che si apre la tab
-    if (_sbReady && (isStaff() || isAdmin())) {
-      getSupabase().from('members').select('*').then(function(res) {
-        if (res.error || !res.data) return;
-        res.data.forEach(function(dm) {
-          var mapped = {
-            name: dm.name, initial: dm.initial, color: dm.color,
-            password: dm.password_hash, role: dm.role,
-            photo: dm.foto_url || null, sospeso: dm.sospeso || false,
-            canCreateProfiles: dm.can_create_profiles || false,
-          };
-          var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
-          if (existing) Object.assign(existing, mapped);
-          else MEMBERS.push(mapped);
-        });
-        // Rimuovi membri locali che non esistono più su Supabase
-        var dbNames = res.data.map(function(dm){ return dm.name; });
-        for (var i = MEMBERS.length - 1; i >= 0; i--) {
-          if (!dbNames.includes(MEMBERS[i].name)) MEMBERS.splice(i, 1);
-        }
-        buildMembriList();
-      });
-    }
   }
   if (name === 'configura') buildConfigura();
   if (name === 'dashboard') { applyWidgetConfig(); applyTabConfig(); applyBenvenuto(); }
@@ -724,13 +701,12 @@ function navigaAdEvento(eventoId) {
   calYear  = ev.anno;
   calMonth = ev.mese;
   calSel   = ev.giorno;
-  // Naviga alla schermata principale e poi al tab calendario
+
+  // Per tutti gli utenti (staff inclusi) la notifica apre il calendario della home
   navigate('screenHome');
-  showTab('calendario');
-  // buildCal() viene chiamato da showTab('calendario'); dopo renderizza il dettaglio
   setTimeout(function() {
-    renderCalDetail(ev.giorno, [ev], false);
-  }, 50);
+    buildCal();
+  }, 80);
   _pendingEventoId = null;
 }
 
@@ -776,8 +752,8 @@ function buildCal() {
     (function(day) {
       var tipi = tipiVisibiliPerRole(currentUser ? currentUser.role : null);
       var dayTs = new Date(calYear, calMonth-1, day).getTime();
-      // Raccoglie TUTTI gli eventi visibili per questo giorno (start esatto o multi-giorno)
-      var evs = EVENTI.filter(function(e) {
+      // Cerca evento: giorno di inizio esatto OPPURE evento multi-giorno che copre questo giorno
+      var ev = EVENTI.find(function(e) {
         if (tipi.indexOf(e.tipo) < 0) return false;
         var startTs = new Date(e.anno, e.mese-1, e.giorno).getTime();
         if (e.giornoFine && e.meseFine && e.annoFine) {
@@ -786,7 +762,6 @@ function buildCal() {
         }
         return e.anno===calYear && e.mese===calMonth && e.giorno===day;
       });
-      var ev = evs[0] || null; // primo evento per colorazione cella
       var cell = document.createElement('div');
       cell.className = 'cal-day';
       cell.textContent = day;
@@ -797,168 +772,139 @@ function buildCal() {
         // Se è un giorno "di continuazione" (non il giorno di inizio), aggiunge classe visiva
         var startTs = new Date(ev.anno, ev.mese-1, ev.giorno).getTime();
         if (dayTs > startTs) cell.classList.add('event-continuation');
-        // Badge se ci sono più eventi nello stesso giorno
-        if (evs.length > 1) {
-          var badge = document.createElement('span');
-          badge.className = 'cal-multi-badge';
-          badge.textContent = evs.length;
-          cell.appendChild(badge);
-        }
       }
       if (calSel === day) cell.classList.add('selected');
-      cell.onclick = function() { calSel = day; buildCal(); renderCalDetail(day, evs, false); };
+      cell.onclick = function() { calSel = day; buildCal(); renderCalDetail(day, ev, false); };
       grid.appendChild(cell);
     })(d);
   }
 
   if (calSel !== null) {
     var tipiSel = tipiVisibiliPerRole(currentUser ? currentUser.role : null);
-    var selEvs = EVENTI.filter(function(e) {
+    var selEv = EVENTI.find(function(e) {
       return e.anno===calYear && e.mese===calMonth && e.giorno===calSel && tipiSel.indexOf(e.tipo) >= 0;
     });
-    renderCalDetail(calSel, selEvs, false);
+    renderCalDetail(calSel, selEv, false);
   } else {
     var det = $id('calDetail');
     if (det) det.innerHTML = '';
   }
 }
 
-// renderCalDetail — ev può essere un singolo evento (legacy/navigaAdEvento) oppure un array di eventi
 function renderCalDetail(day, ev, _isStaffView) {
   var detId = _isStaffView ? 'sCalDetail' : 'calDetail';
   var det = document.getElementById(detId);
   if (!det) return;
   det.innerHTML = '';
 
-  // Normalizza: accetta sia un singolo evento che un array
-  var evs = Array.isArray(ev) ? ev : (ev ? [ev] : []);
+  if (ev) {
+    var card = document.createElement('div');
+    card.className = 'cal-detail-card';
+    card.style.borderLeft = '3px solid ' + TIPO_COLOR[ev.tipo];
 
-  if (evs.length > 0) {
-    // Se ci sono più eventi, mostra un'intestazione conteggio
-    if (evs.length > 1) {
-      var countEl = document.createElement('div');
-      countEl.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#555;margin-bottom:8px';
-      countEl.textContent = '// ' + evs.length + ' EVENTI IN QUESTA DATA';
-      det.appendChild(countEl);
+    var header = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">' +
+      '<div class="cal-detail-title">' + ev.nome + '</div>' +
+      tag(ev.tipo) +
+      '</div>';
+    var dow = new Date(ev.anno, ev.mese-1, day).getDay(); // 0=dom
+    var dowIdx = dow === 0 ? 6 : dow - 1;
+    var activeMonth = _isStaffView ? sCalMonth : calMonth;
+    var dateStr;
+    if (ev.giornoFine && ev.meseFine && ev.annoFine) {
+      dateStr = '🗓️ ' + ev.giorno + ' ' + MESI[ev.mese-1] + ' → ' + ev.giornoFine + ' ' + MESI[ev.meseFine-1] + (ev.annoFine !== ev.anno ? ' ' + ev.annoFine : '');
+    } else {
+      dateStr = '🗓️ ' + GIORNI_FULL[dowIdx] + ' ' + day + ' ' + MESI[activeMonth-1];
+    }
+    var meta = '<div class="cal-detail-meta">' + dateStr + ' · ORE ' + ev.ora + '</div>';
+    var desc = ev.desc ? '<div class="cal-detail-desc">ℹ️ ' + ev.desc + '</div>' : '';
+    var extra = '';
+    if (ev.luogo) extra += '<div class="cal-detail-desc">📍 ' + ev.luogo + '</div>';
+    if (ev.note)  extra += '<div class="cal-detail-desc">✨ ' + ev.note  + '</div>';
+    var locandina = ev.locandina ? '<div class="loc-img-wrap" onclick="event.stopPropagation();openLightbox(\'' + ev.locandina + '\')" style="margin-top:10px"><img src="' + ev.locandina + '" style="width:100%;border-radius:4px;max-height:220px;object-fit:contain;display:block"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>' : '';
+
+    var actions = '';
+    if (_isStaffView && canEdit()) {
+      var idx = EVENTI.indexOf(ev);
+      actions = '<div style="margin-top:10px;display:flex;gap:6px">' +
+        '<button class="cal-action-btn" style="color:' + TIPO_COLOR[ev.tipo] + ';border-color:' + TIPO_COLOR[ev.tipo] + '" onclick="openEventoModal(' + idx + ')">✏ MODIFICA</button>' +
+        '<button class="cal-action-btn" style="color:#555;border-color:#333" onclick="deleteEvento(' + idx + ')">🗑 ELIMINA</button>' +
+        '</div>';
     }
 
-    evs.forEach(function(evItem) {
-      var card = document.createElement('div');
-      card.className = 'cal-detail-card';
-      card.style.borderLeft = '3px solid ' + TIPO_COLOR[evItem.tipo];
-      // Separazione visiva tra card quando ce ne sono più di una
-      if (evs.length > 1) card.style.marginBottom = '10px';
+    card.innerHTML = header + meta + desc + extra + locandina + actions;
+    det.appendChild(card);
+    buildEventLinks(ev, card);
 
-      var header = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">' +
-        '<div class="cal-detail-title">' + evItem.nome + '</div>' +
-        tag(evItem.tipo) +
+    // ── Valutazioni evento (solo lato pubblico) ──
+    if (!_isStaffView) {
+      var evId   = ev.id;
+      var vList  = EVENTI_VALUTAZIONI[evId] || [];
+      var canDel = isStaff();
+      var giàVotato = currentUser && vList.some(function(v){ return v.nome === currentUser.name; });
+
+      var ratingBlock = document.createElement('div');
+      ratingBlock.style.cssText = 'margin-top:14px;border-top:1px solid #1a1a1a;padding-top:12px';
+
+      // Intestazione con media
+      var totS = vList.filter(function(v){ return v.stelle > 0; });
+      var media = totS.length ? (totS.reduce(function(a,v){ return a+v.stelle; },0)/totS.length).toFixed(1) : null;
+      var mediaHtml = media
+        ? '<span style="color:#c8a84b;font-family:var(--display);font-size:15px">' + media + ' ★</span>' +
+          '<span style="font-family:var(--mono);font-size:8px;color:#444;margin-left:6px">' + vList.length + ' VOTO/I</span>'
+        : '<span style="font-family:var(--mono);font-size:8px;color:#444;letter-spacing:1px">NESSUNA VALUTAZIONE</span>';
+
+      ratingBlock.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<span style="font-family:var(--mono);font-size:9px;color:#555;letter-spacing:2px">// VALUTAZIONI EVENTO</span>' +
+        '<div>' + mediaHtml + '</div>' +
         '</div>';
-      var dow = new Date(evItem.anno, evItem.mese-1, day).getDay();
-      var dowIdx = dow === 0 ? 6 : dow - 1;
-      var activeMonth = _isStaffView ? sCalMonth : calMonth;
-      var dateStr;
-      if (evItem.giornoFine && evItem.meseFine && evItem.annoFine) {
-        dateStr = '🗓️ ' + evItem.giorno + ' ' + MESI[evItem.mese-1] + ' → ' + evItem.giornoFine + ' ' + MESI[evItem.meseFine-1] + (evItem.annoFine !== evItem.anno ? ' ' + evItem.annoFine : '');
-      } else {
-        dateStr = '🗓️ ' + GIORNI_FULL[dowIdx] + ' ' + day + ' ' + MESI[activeMonth-1];
-      }
-      var meta = '<div class="cal-detail-meta">' + dateStr + ' · ORE ' + evItem.ora + '</div>';
-      var desc = evItem.desc ? '<div class="cal-detail-desc">ℹ️ ' + evItem.desc + '</div>' : '';
-      var extra = '';
-      if (evItem.luogo) extra += '<div class="cal-detail-desc">📍 ' + evItem.luogo + '</div>';
-      if (evItem.note)  extra += '<div class="cal-detail-desc">✨ ' + evItem.note  + '</div>';
-      var locandina = evItem.locandina ? '<div class="loc-img-wrap" onclick="event.stopPropagation();openLightbox(\'' + evItem.locandina + '\')" style="margin-top:10px"><img src="' + evItem.locandina + '" style="width:100%;border-radius:4px;max-height:220px;object-fit:contain;display:block"/><span class="loc-zoom-hint">🔍 INGRANDISCI</span></div>' : '';
 
-      var actions = '';
-      if (_isStaffView && canEdit()) {
-        var idx = EVENTI.indexOf(evItem);
-        actions = '<div style="margin-top:10px;display:flex;gap:6px">' +
-          '<button class="cal-action-btn" style="color:' + TIPO_COLOR[evItem.tipo] + ';border-color:' + TIPO_COLOR[evItem.tipo] + '" onclick="openEventoModal(' + idx + ')">✏ MODIFICA</button>' +
-          '<button class="cal-action-btn" style="color:#555;border-color:#333" onclick="deleteEvento(' + idx + ')">🗑 ELIMINA</button>' +
+      // Form solo se loggato e non ancora votato
+      if (currentUser && !giàVotato) {
+        var formDiv = document.createElement('div');
+        formDiv.style.cssText = 'margin-bottom:12px';
+        formDiv.innerHTML =
+          '<div style="display:flex;gap:4px;margin-bottom:8px" id="evStarRow_' + evId + '">' +
+            [1,2,3,4,5].map(function(n){
+              return '<span class="star-btn" data-ev="' + evId + '" data-v="' + n + '" onclick="setEvStarVal(' + evId + ',' + n + ')" style="font-size:20px;cursor:pointer;opacity:0.3">★</span>';
+            }).join('') +
+          '</div>' +
+          '<textarea id="evValInput_' + evId + '" placeholder="La tua recensione..." maxlength="300" style="width:100%;box-sizing:border-box;padding:8px;background:#0d0d0d;border:1px solid #222;border-radius:3px;color:var(--light);font-family:var(--body);font-size:12px;resize:none;outline:none" rows="2"></textarea>' +
+          '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
+            '<button onclick="inviaValutazioneEvento(' + evId + ')" style="padding:6px 14px;background:transparent;border:1px solid #333;color:#777;font-family:var(--mono);font-size:8px;letter-spacing:2px;cursor:pointer;border-radius:2px">INVIA</button>' +
           '</div>';
+        ratingBlock.appendChild(formDiv);
+      } else if (!currentUser) {
+        var loginMsg = document.createElement('div');
+        loginMsg.style.cssText = 'font-family:var(--mono);font-size:8px;color:#333;letter-spacing:1px;margin-bottom:10px';
+        loginMsg.textContent = '// ACCEDI PER LASCIARE UNA VALUTAZIONE';
+        ratingBlock.appendChild(loginMsg);
+      } else if (giàVotato) {
+        var doneMsg = document.createElement('div');
+        doneMsg.style.cssText = 'font-family:var(--mono);font-size:8px;color:#555;letter-spacing:1px;margin-bottom:10px';
+        doneMsg.textContent = '✓ HAI GIÀ VALUTATO QUESTO EVENTO';
+        ratingBlock.appendChild(doneMsg);
       }
 
-      card.innerHTML = header + meta + desc + extra + locandina + actions;
-      det.appendChild(card);
-      buildEventLinks(evItem, card);
-
-      // ── Valutazioni evento (solo lato pubblico) ──
-      if (!_isStaffView) {
-        var evId   = evItem.id;
-        var vList  = EVENTI_VALUTAZIONI[evId] || [];
-        var canDel = isStaff();
-        var giàVotato = currentUser && vList.some(function(v){ return v.nome === currentUser.name; });
-
-        var ratingBlock = document.createElement('div');
-        ratingBlock.style.cssText = 'margin-top:14px;border-top:1px solid #1a1a1a;padding-top:12px';
-
-        var totS = vList.filter(function(v){ return v.stelle > 0; });
-        var media = totS.length ? (totS.reduce(function(a,v){ return a+v.stelle; },0)/totS.length).toFixed(1) : null;
-        var mediaHtml = media
-          ? '<span style="color:#c8a84b;font-family:var(--display);font-size:15px">' + media + ' ★</span>' +
-            '<span style="font-family:var(--mono);font-size:8px;color:#444;margin-left:6px">' + vList.length + ' VOTO/I</span>'
-          : '<span style="font-family:var(--mono);font-size:8px;color:#444;letter-spacing:1px">NESSUNA VALUTAZIONE</span>';
-
-        ratingBlock.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
-          '<span style="font-family:var(--mono);font-size:9px;color:#555;letter-spacing:2px">// VALUTAZIONI EVENTO</span>' +
-          '<div>' + mediaHtml + '</div>' +
-          '</div>';
-
-        if (currentUser && !giàVotato) {
-          var formDiv = document.createElement('div');
-          formDiv.style.cssText = 'margin-bottom:12px';
-          formDiv.innerHTML =
-            '<div style="display:flex;gap:4px;margin-bottom:8px" id="evStarRow_' + evId + '">' +
-              [1,2,3,4,5].map(function(n){
-                return '<span class="star-btn" data-ev="' + evId + '" data-v="' + n + '" onclick="setEvStarVal(' + evId + ',' + n + ')" style="font-size:20px;cursor:pointer;opacity:0.3">★</span>';
-              }).join('') +
+      // Lista valutazioni
+      if (vList.length) {
+        vList.forEach(function(v, vi) {
+          var row = document.createElement('div');
+          row.style.cssText = 'background:#0d0d0d;border:1px solid #1a1a1a;border-radius:3px;padding:8px;display:flex;align-items:flex-start;gap:8px;margin-bottom:6px';
+          var stelle = v.stelle > 0
+            ? '<div style="color:#c8a84b;font-size:12px;margin-bottom:3px">' + '★'.repeat(v.stelle) + '<span style="color:#222">' + '★'.repeat(5-v.stelle) + '</span></div>'
+            : '';
+          row.innerHTML =
+            '<div style="flex:1">' +
+              stelle +
+              (v.testo ? '<div style="font-family:var(--body);font-size:12px;color:var(--light);line-height:1.4">' + nl2br(v.testo) + '</div>' : '') +
+              '<div style="font-family:var(--mono);font-size:8px;color:#333;margin-top:3px">' + v.nome.toUpperCase() + ' · ' + v.tempo + '</div>' +
             '</div>' +
-            '<textarea id="evValInput_' + evId + '" placeholder="La tua recensione..." maxlength="300" style="width:100%;box-sizing:border-box;padding:8px;background:#0d0d0d;border:1px solid #222;border-radius:3px;color:var(--light);font-family:var(--body);font-size:12px;resize:none;outline:none" rows="2"></textarea>' +
-            '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
-              '<button onclick="inviaValutazioneEvento(' + evId + ')" style="padding:6px 14px;background:transparent;border:1px solid #333;color:#777;font-family:var(--mono);font-size:8px;letter-spacing:2px;cursor:pointer;border-radius:2px">INVIA</button>' +
-            '</div>';
-          ratingBlock.appendChild(formDiv);
-        } else if (!currentUser) {
-          var loginMsg = document.createElement('div');
-          loginMsg.style.cssText = 'font-family:var(--mono);font-size:8px;color:#333;letter-spacing:1px;margin-bottom:10px';
-          loginMsg.textContent = '// ACCEDI PER LASCIARE UNA VALUTAZIONE';
-          ratingBlock.appendChild(loginMsg);
-        } else if (giàVotato) {
-          var doneMsg = document.createElement('div');
-          doneMsg.style.cssText = 'font-family:var(--mono);font-size:8px;color:#555;letter-spacing:1px;margin-bottom:10px';
-          doneMsg.textContent = '✓ HAI GIÀ VALUTATO QUESTO EVENTO';
-          ratingBlock.appendChild(doneMsg);
-        }
-
-        if (vList.length) {
-          vList.forEach(function(v, vi) {
-            var row = document.createElement('div');
-            row.style.cssText = 'background:#0d0d0d;border:1px solid #1a1a1a;border-radius:3px;padding:8px;display:flex;align-items:flex-start;gap:8px;margin-bottom:6px';
-            var stelle = v.stelle > 0
-              ? '<div style="color:#c8a84b;font-size:12px;margin-bottom:3px">' + '★'.repeat(v.stelle) + '<span style="color:#222">' + '★'.repeat(5-v.stelle) + '</span></div>'
-              : '';
-            row.innerHTML =
-              '<div style="flex:1">' +
-                stelle +
-                (v.testo ? '<div style="font-family:var(--body);font-size:12px;color:var(--light);line-height:1.4">' + nl2br(v.testo) + '</div>' : '') +
-                '<div style="font-family:var(--mono);font-size:8px;color:#333;margin-top:3px">' + v.nome.toUpperCase() + ' · ' + v.tempo + '</div>' +
-              '</div>' +
-              (canDel ? '<button style="background:none;border:none;color:#cc2200;cursor:pointer;font-size:11px;padding:0;flex-shrink:0" onclick="deleteValutazioneEvento(' + evId + ',' + vi + ')">✕</button>' : '');
-            ratingBlock.appendChild(row);
-          });
-        }
-
-        det.appendChild(ratingBlock);
+            (canDel ? '<button style="background:none;border:none;color:#cc2200;cursor:pointer;font-size:11px;padding:0;flex-shrink:0" onclick="deleteValutazioneEvento(' + evId + ',' + vi + ')">✕</button>' : '');
+          ratingBlock.appendChild(row);
+        });
       }
-    }); // fine forEach evs
 
-    // Bottone "Aggiungi altro evento" per lo staff (solo lato staff)
-    if (_isStaffView && canEdit()) {
-      var addMoreBtn = document.createElement('button');
-      addMoreBtn.className = 'cal-add-btn';
-      addMoreBtn.textContent = '+ AGGIUNGI EVENTO IN QUESTA DATA';
-      addMoreBtn.onclick = function() { openEventoModal(null, day, sCalMonth, sCalYear); };
-      det.appendChild(addMoreBtn);
+      det.appendChild(ratingBlock);
     }
   } else if (_isStaffView && currentUser) {
     var addBtn = document.createElement('button');
@@ -1019,7 +965,7 @@ function buildSCal() {
     (function(day) {
       // Staff: show ALL events (including multi-day)
       var dayTs = new Date(sCalYear, sCalMonth-1, day).getTime();
-      var evs = EVENTI.filter(function(e) {
+      var ev = EVENTI.find(function(e) {
         var startTs = new Date(e.anno, e.mese-1, e.giorno).getTime();
         if (e.giornoFine && e.meseFine && e.annoFine) {
           var endTs = new Date(e.annoFine, e.meseFine-1, e.giornoFine).getTime();
@@ -1027,7 +973,6 @@ function buildSCal() {
         }
         return e.anno===sCalYear && e.mese===sCalMonth && e.giorno===day;
       });
-      var ev = evs[0] || null;
       var cell = document.createElement('div');
       cell.className = 'cal-day';
       cell.textContent = day;
@@ -1037,22 +982,16 @@ function buildSCal() {
         cell.classList.add(TIPO_CLASS[ev.tipo]);
         var startTs = new Date(ev.anno, ev.mese-1, ev.giorno).getTime();
         if (dayTs > startTs) cell.classList.add('event-continuation');
-        if (evs.length > 1) {
-          var badge = document.createElement('span');
-          badge.className = 'cal-multi-badge';
-          badge.textContent = evs.length;
-          cell.appendChild(badge);
-        }
       }
       if (sCalSel === day) cell.classList.add('selected');
-      cell.onclick = function() { sCalSel = day; buildSCal(); renderCalDetail(day, evs, true); };
+      cell.onclick = function() { sCalSel = day; buildSCal(); renderCalDetail(day, ev, true); };
       grid.appendChild(cell);
     })(d);
   }
 
   if (sCalSel !== null) {
-    var selEvs = EVENTI.filter(function(e) { return e.anno===sCalYear && e.mese===sCalMonth && e.giorno===sCalSel; });
-    renderCalDetail(sCalSel, selEvs, true);
+    var selEv = EVENTI.find(function(e) { return e.anno===sCalYear && e.mese===sCalMonth && e.giorno===sCalSel; });
+    renderCalDetail(sCalSel, selEv, true);
   } else {
     var det = document.getElementById('sCalDetail');
     if (det) det.innerHTML = '';
@@ -1463,9 +1402,7 @@ function inviaValutazioneEvento(evId) {
   delete _evStarVals[evId];
   addLog('ha valutato un evento');
   saveConfig();
-  var tipiSel = tipiVisibiliPerRole(currentUser ? currentUser.role : null);
-  var selEvs = EVENTI.filter(function(e){ return e.anno===calYear && e.mese===calMonth && e.giorno===calSel && tipiSel.indexOf(e.tipo) >= 0; });
-  renderCalDetail(calSel, selEvs, false);
+  renderCalDetail(calSel, EVENTI.find(function(e){ return e.id === evId; }) || null, false);
 }
 
 function deleteValutazioneEvento(evId, vi) {
@@ -1475,9 +1412,7 @@ function deleteValutazioneEvento(evId, vi) {
   }
   addLog('eliminata valutazione evento');
   saveConfig();
-  var tipiSel2 = tipiVisibiliPerRole(currentUser ? currentUser.role : null);
-  var selEvs2 = EVENTI.filter(function(e){ return e.anno===calYear && e.mese===calMonth && e.giorno===calSel && tipiSel2.indexOf(e.tipo) >= 0; });
-  renderCalDetail(calSel, selEvs2, false);
+  renderCalDetail(calSel, EVENTI.find(function(e){ return e.id === evId; }) || null, false);
 }
 
 
@@ -1823,7 +1758,7 @@ function toggleSpesa(i) {
     // Stiamo riaprendo una voce già fatta → riapri senza toccare magazzino
     item.done = false;
     addLog('riaperto spesa: ' + item.nome);
-    saveSpesaRow(item);
+    saveSpesa();
     buildSpesa();
   }
 }
@@ -1866,27 +1801,18 @@ function confermaAcquisto(i) {
 
   buildSpesa();
   saveMagazzino();
-  saveSpesaRow(item);
+  saveSpesa();
   showToast('Acquisto registrato!', 'success');
 }
 
 function deleteSpesa(i) {
   var item = SPESA[i];
-  if (!item) return;
-  var label = item.nome || 'articolo';
-  showConfirm('Rimuovere "' + label + '" dalla lista?', function() {
-    // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
-    // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
-    if (item.fromMagazzino && item.magazzinoId) {
-      _manuallyDeletedSpesaIds[item.magazzinoId] = true;
-    }
-    var idToDelete = item.id;
-    addLog('rimosso spesa: ' + label);
-    SPESA.splice(i, 1);
-    deleteSpesaRow(idToDelete);
-    buildSpesa();
-    showToast(T_DELETED, 'error');
-  }, 'RIMUOVI ARTICOLO', 'RIMUOVI');
+  // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
+  // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
+  if (item && item.fromMagazzino && item.magazzinoId) {
+    _manuallyDeletedSpesaIds[item.magazzinoId] = true;
+  }
+  deleteItem(SPESA, i, 'spesa', buildSpesa, saveSpesa);
 }
 
 // ════════════════════════════════════════
@@ -2468,6 +2394,10 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       if (tsFine < tsInizio) { showToast('// DATA FINE PRECEDENTE ALL\'INIZIO', 'error'); return; }
     }
 
+    var esistente = eventoEsistente(giorno, mese, anno, isEdit ? ev.id : -1);
+    if (esistente) {
+      showToast('⚠ DATA GIÀ OCCUPATA DA: ' + esistente.nome, 'error', 3500);
+    }
 
     var oraFineVal = document.getElementById('mOraFine').value.trim();
     var terminatoVal = document.getElementById('mTerminato').checked;
@@ -3040,7 +2970,7 @@ function openSpesaModal(editIdx) {
       _categoria:     isEdit ? (item._categoria     || null)  : null,
     };
     if (isEdit) { SPESA[editIdx] = obj; } else { SPESA.push(obj); }
-    saveSpesaRow(obj);
+    saveSpesa();
     addLog((isEdit ? 'modificato' : 'aggiunto') + ' spesa: ' + obj.nome);
     buildSpesa();
     showToast(T_SAVED, 'success');
@@ -3539,16 +3469,11 @@ function toggleSospesoMembro(i) {
   var theirLevel = roleLabel(m.role).level;
   if (!isAdmin() && theirLevel >= myLevel) { showToast('// PERMESSO NEGATO', 'error'); return; }
   var newSospeso = !m.sospeso;
-  var azione = newSospeso ? 'Sospendere' : 'Riattivare';
-  var titolo = newSospeso ? 'SOSPENDI ACCOUNT' : 'RIATTIVA ACCOUNT';
-  var btnLabel = newSospeso ? 'SOSPENDI' : 'RIATTIVA';
-  showConfirm(azione + " l'account di " + m.name + '?', function() {
-    MEMBERS[i].sospeso = newSospeso;
-    addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
-    saveMembers();
-    buildMembriList();
-    showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
-  }, titolo, btnLabel);
+  MEMBERS[i].sospeso = newSospeso;
+  addLog((newSospeso ? 'ha sospeso' : 'ha riattivato') + ' account: ' + m.name);
+  saveMembers();
+  buildMembriList();
+  showToast(newSospeso ? '// ACCOUNT SOSPESO' : '// ACCOUNT RIATTIVATO', newSospeso ? 'error' : 'success');
 }
 
 
