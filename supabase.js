@@ -256,18 +256,26 @@ async function cleanupDuplicateSpesa() {
   } catch(e) { console.warn('[cleanup spesa]', e.message); }
 }
 
-// LAVORI
+// LAVORI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
 function saveLavori() {
   _debounce('lavori', async function() {
     if (!_sbReady) return;
     try {
-      await getSupabase().from('lavori').delete().gt('id', 0);
+      var sb = getSupabase();
       var rows = LAVORI.map(function(l) {
         return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
       });
+      // 1. Upsert: aggiorna se esiste, inserisce se non esiste
       if (rows.length) {
-        var res = await getSupabase().from('lavori').insert(rows);
-        if (res.error) console.warn('[sb.lavori]', res.error.message);
+        var res = await sb.from('lavori').upsert(rows, { onConflict: 'id' });
+        if (res.error) console.warn('[sb.lavori upsert]', res.error.message);
+      }
+      // 2. Elimina solo le righe non più presenti in LAVORI
+      var ids = LAVORI.map(function(l){ return l.id; });
+      if (ids.length) {
+        await sb.from('lavori').delete().not('id', 'in', '(' + ids.join(',') + ')');
+      } else {
+        await sb.from('lavori').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.lavori]', e.message); }
   }, 600);
@@ -348,35 +356,51 @@ function savePagamenti() {
   }, 600);
 }
 
-// SUGGERIMENTI
+// SUGGERIMENTI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
 function saveSuggerimenti() {
   _debounce('suggerimenti', async function() {
     if (!_sbReady) return;
     try {
-      await getSupabase().from('suggerimenti').delete().gt('id', 0);
+      var sb = getSupabase();
       var rows = SUGGERIMENTI.map(function(s) {
         return { id: s.id, testo: s.testo, author: s.author || null, ts: new Date(s.id).toISOString() };
       });
+      // 1. Upsert
       if (rows.length) {
-        var res = await getSupabase().from('suggerimenti').insert(rows);
-        if (res.error) console.warn('[sb.suggerimenti]', res.error.message);
+        var res = await sb.from('suggerimenti').upsert(rows, { onConflict: 'id' });
+        if (res.error) console.warn('[sb.suggerimenti upsert]', res.error.message);
+      }
+      // 2. Elimina solo le righe non più presenti
+      var ids = SUGGERIMENTI.map(function(s){ return s.id; });
+      if (ids.length) {
+        await sb.from('suggerimenti').delete().not('id', 'in', '(' + ids.join(',') + ')');
+      } else {
+        await sb.from('suggerimenti').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.suggerimenti]', e.message); }
   }, 600);
 }
 
-// VALUTAZIONI
+// VALUTAZIONI — upsert singola riga + delete solo righe rimosse (no DELETE-all)
 function saveValutazioni() {
   _debounce('valutazioni', async function() {
     if (!_sbReady) return;
     try {
-      await getSupabase().from('valutazioni').delete().gt('id', 0);
+      var sb = getSupabase();
       var rows = VALUTAZIONI.map(function(v) {
         return { id: v.id, author: v.nome, stelle: v.stelle || 0, testo: v.testo || '', ts: new Date(v.id).toISOString() };
       });
+      // 1. Upsert
       if (rows.length) {
-        var res = await getSupabase().from('valutazioni').insert(rows);
-        if (res.error) console.warn('[sb.valutazioni]', res.error.message);
+        var res = await sb.from('valutazioni').upsert(rows, { onConflict: 'id' });
+        if (res.error) console.warn('[sb.valutazioni upsert]', res.error.message);
+      }
+      // 2. Elimina solo le righe non più presenti
+      var ids = VALUTAZIONI.map(function(v){ return v.id; });
+      if (ids.length) {
+        await sb.from('valutazioni').delete().not('id', 'in', '(' + ids.join(',') + ')');
+      } else {
+        await sb.from('valutazioni').delete().gt('id', 0);
       }
     } catch(e) { console.warn('[sb.valutazioni]', e.message); }
   }, 600);
@@ -994,7 +1018,11 @@ function initRealtime() {
     console.warn('[spesa] DELETE senza old.id — eseguire ALTER TABLE spesa REPLICA IDENTITY FULL');
     getSupabase().from('spesa').select('*').then(function(res) {
       if (res.error) { console.warn('[sb.spesa reload]', res.error.message); return; }
-      if (res.data) SPESA = res.data.map(_mapSpesaRow);
+      if (res.data) {
+        SPESA = res.data.map(_mapSpesaRow);
+        // Reset del guard eliminazione manuale: i dati sono stati ricaricati da remoto
+        _manuallyDeletedSpesaIds = {};
+      }
       buildSpesa(); updateDash();
     });
   }

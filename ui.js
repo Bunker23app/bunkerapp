@@ -71,6 +71,10 @@ let LINKS_PAGE = {
 let LINKS_EVENTO = {};
 var _nextLinkId = 2;
 let SPESA = [];
+// Set degli id spesa eliminati manualmente dall'utente in questa sessione.
+// Serve a impedire a syncMagazzinoWithSpesa di reinserire voci [AUTO]
+// che l'utente ha appena cancellato. Si resetta al ricaricamento dei dati.
+var _manuallyDeletedSpesaIds = {};
 
 let LAVORI = [
   { id:1, lavoro:'Pulire la sala',           who:'-', done:false },
@@ -1752,7 +1756,15 @@ function confermaAcquisto(i) {
   showToast('Acquisto registrato!', 'success');
 }
 
-function deleteSpesa(i) { deleteItem(SPESA, i, 'spesa', buildSpesa, saveSpesa); }
+function deleteSpesa(i) {
+  var item = SPESA[i];
+  // Se è una voce [AUTO] collegata al magazzino, registrala come eliminata manualmente
+  // così syncMagazzinoWithSpesa non la reinserirà nella stessa sessione.
+  if (item && item.fromMagazzino && item.magazzinoId) {
+    _manuallyDeletedSpesaIds[item.magazzinoId] = true;
+  }
+  deleteItem(SPESA, i, 'spesa', buildSpesa, saveSpesa);
+}
 
 // ════════════════════════════════════════
 // LAVORI
@@ -2756,6 +2768,9 @@ function syncMagazzinoWithSpesa() {
     var existingIdx = SPESA.findIndex(function(s) { return s.fromMagazzino && s.magazzinoId === item.id; });
 
     if (item.attuale < item.minimo) {
+      // Se l'utente ha eliminato manualmente questa voce nella sessione corrente, non reinserirla
+      if (_manuallyDeletedSpesaIds[item.id]) return;
+
       var qty = item.minimo - item.attuale;
       if (existingIdx >= 0) {
         // Aggiorna voce esistente (anche se done, riattivala se la qty è cambiata)
@@ -2786,6 +2801,8 @@ function syncMagazzinoWithSpesa() {
       if (existingIdx >= 0) {
         SPESA.splice(existingIdx, 1);
       }
+      // Sopra il minimo: rimuovi eventuale guard di eliminazione manuale
+      delete _manuallyDeletedSpesaIds[item.id];
     }
   });
   // NOTA: buildSpesa() NON viene chiamata qui — è compito del chiamante.
