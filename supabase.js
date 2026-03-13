@@ -280,64 +280,6 @@ async function saveEventoRow(e) {
   } catch(e) { console.warn('[sb.eventoRow]', e.message); }
 }
 
-// Rimuove duplicati dalla tabella spesa (stesso magazzino_id con from_magazzino=true)
-// Chiamata UNA SOLA VOLTA al caricamento iniziale per bonificare il DB
-async function cleanupDuplicateSpesa() {
-  if (!_sbReady) return;
-  try {
-    var sb = getSupabase();
-    var res = await sb.from('spesa').select('*');
-    if (res.error || !res.data) return;
-    var rows = res.data;
-
-    // Raggruppa per magazzino_id le righe automatiche (from_magazzino=true)
-    var seen = {};
-    var toDelete = [];
-    rows.forEach(function(r) {
-      if (!r.from_magazzino || !r.magazzino_id) return;
-      var key = r.magazzino_id;
-      if (seen[key] === undefined) {
-        seen[key] = r.id; // tieni il primo (id più basso = più vecchio)
-      } else {
-        // duplicato: marca per eliminazione (tieni il più vecchio, elimina i nuovi)
-        // In realtà vogliamo tenere quello con id più BASSO
-        if (r.id < seen[key]) {
-          toDelete.push(seen[key]);
-          seen[key] = r.id;
-        } else {
-          toDelete.push(r.id);
-        }
-      }
-    });
-
-    if (toDelete.length > 0) {
-      console.log('[cleanup spesa] eliminazione ' + toDelete.length + ' duplicati:', toDelete);
-      await sb.from('spesa').delete().in('id', toDelete);
-      // Ricarica SPESA locale dopo cleanup
-      var fresh = await sb.from('spesa').select('*');
-      if (!fresh.error && fresh.data) {
-        SPESA = fresh.data.map(function(s) {
-          var obj = {
-            id: s.id, nome: s.item, done: s.done || false,
-            qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
-            unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
-            magazzinoId: s.magazzino_id || null, qtyNum: 0, _categoria: null,
-          };
-          if (obj.qty) { var p = parseFloat(obj.qty); if (!isNaN(p)) obj.qtyNum = p; }
-          if (obj.fromMagazzino && obj.magazzinoId) {
-            var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; });
-            if (mz) { obj._categoria = mz.categoria; obj.costoUnitario = mz.costoUnitario; obj.unita = mz.unita; }
-          }
-          return obj;
-        });
-        var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
-        if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
-      }
-      console.log('[cleanup spesa] completato');
-    }
-  } catch(e) { console.warn('[cleanup spesa]', e.message); }
-}
-
 // LAVORI — solo upsert della riga modificata.
 // Il DELETE avviene in deleteLavori() via _sbDeleteById(), mai qui.
 // Questo evita che un aiutante che salva sovrascriva righe aggiunte in concorrenza.
@@ -1398,6 +1340,11 @@ function initRealtime() {
             initPolling();
           }
         }
+        // Ricarica le tabelle in base al nuovo ruolo (senza reload pagina)
+        reloadStaffData().then(function() {
+          if (typeof buildAll === 'function') buildAll();
+          showToast('// RUOLO AGGIORNATO: ' + dm.role.toUpperCase(), 'success');
+        });
         // Aggiorna UI ruolo ovunque visibile
         var rlEl = document.getElementById('staffRole');
         if (rlEl && typeof roleLabel === 'function') rlEl.textContent = roleLabel(dm.role).label;
@@ -1500,6 +1447,8 @@ async function _checkAccountStatus() {
         if (isNowStaff) { stopPolling(); initRealtime(); }
         else            { stopRealtime(); initPolling(); }
       }
+      // Ricarica le tabelle in base al nuovo ruolo (senza reload pagina)
+      await reloadStaffData();
       showToast('// RUOLO AGGIORNATO: ' + res.data.role.toUpperCase(), 'success');
       if (typeof buildAll === 'function') buildAll();
     }
@@ -1533,6 +1482,8 @@ async function _pollPublicData() {
             if (isNowStaff) { stopPolling(); initRealtime(); }
             else            { stopRealtime(); initPolling(); }
           }
+          // Ricarica le tabelle in base al nuovo ruolo (senza reload pagina)
+          await reloadStaffData();
           showToast('// RUOLO AGGIORNATO: ' + accountCheck.data.role.toUpperCase(), 'success');
           if (typeof buildAll === 'function') buildAll();
           return; // il buildAll si occupa già di aggiornare tutto
@@ -1548,7 +1499,7 @@ async function _pollPublicData() {
       ? '*'
       : 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina';
     var results = await Promise.all([
-      sb.from('appconfig').select('data').eq('id', 1).single(),                                          // 0 — config
+      sb.from('appconfig').select('data').eq('id', 1).single(),                                          // 0 — config (solo campi pubblici applicati)
       sb.from('calendario').select(_pollCalSelect).order('data', { ascending: true }),                   // 1 — eventi
       sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                             // 2
       sb.from('valutazioni').select('*').order('ts', { ascending: false }),                              // 3
@@ -1557,8 +1508,9 @@ async function _pollPublicData() {
     // 0. CONFIG → aggiorna BACHECA, INFO, CONSIGLIATI, EVENTI_VALUTAZIONI
     try {
       var cfgRes = results[0];
-      if (cfgRes.data && cfgRes.data.data) {
-        var cfg = cfgRes.data.data;
+      if (cfgRes.data) {
+        // La query selettiva restituisce i campi direttamente nella riga (non dentro .data)
+        var cfg = cfgRes.data;
         if (cfg.BACHECA)            BACHECA = cfg.BACHECA;
         if (cfg.INFO)               INFO = cfg.INFO;
         if (cfg.CONSIGLIATI)        CONSIGLIATI = cfg.CONSIGLIATI;

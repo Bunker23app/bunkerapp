@@ -4809,11 +4809,19 @@ function clearChatSearch() {
 
 function svuotaChat() {
   if (!isAdmin()) { showToast('// SOLO ADMIN', 'error'); return; }
-  if (!confirm('Sei sicuro di voler cancellare tutta la chat? L\'azione non è reversibile.')) return;
+  if (!confirm('Sei sicuro di voler cancellare TUTTA la chat?\nQuesta azione eliminerà i messaggi anche dal database ed è irreversibile.')) return;
   CHAT = [];
   buildChat();
-  clearChatRemote();
-  showToast('// CHAT SVUOTATA ✓', 'success');
+  if (typeof clearChatRemote === 'function') {
+    clearChatRemote().then(function() {
+      showToast('// CHAT SVUOTATA ✓', 'success');
+      addLog('ha svuotato la chat');
+    }).catch(function(e) {
+      showToast('// ERRORE SVUOTA CHAT: ' + (e && e.message ? e.message : '?'), 'error');
+    });
+  } else {
+    showToast('// CHAT SVUOTATA (solo locale) ✓', 'success');
+  }
 }
 
 function svuotaLog() {
