@@ -4278,9 +4278,45 @@ document.addEventListener('DOMContentLoaded', function() {
   var splashGear = document.querySelector('.splash-gear');
   if (splashGear) splashGear.style.animationDuration = '3s';
 
+  // ── Ripristino sessione SINCRONO ──────────────────────────────────────────
+  // Legge localStorage in modo sincrono PRIMA di buildAll() così la prima
+  // render mostra già la schermata corretta senza flash di splash/login.
+  // I dati completi arriveranno da Supabase nel blocco async sottostante.
+  var _sessionToRestore = null;
+  try {
+    var _savedSessSync = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
+    if (_savedSessSync) {
+      var _sessSync = JSON.parse(_savedSessSync);
+      var _elapsedSync = Date.now() - (_sessSync.ts || 0);
+      var _isPrivSync = (_sessSync.role === 'admin' || _sessSync.role === 'staff' || _sessSync.role === 'aiutante');
+      var _sessValidaSync = _isPrivSync || (_elapsedSync < SESSION_TIMEOUT_USER);
+      if (_sessValidaSync && _sessSync.name && _sessSync.role) {
+        currentUser = { name: _sessSync.name, role: _sessSync.role };
+        _sessionToRestore = _sessSync;
+      } else {
+        localStorage.removeItem('bunker23_session');
+      }
+    }
+  } catch(e) {}
+
   buildAll();
   updateHomeAccessLevel();
   startEventoBannerTimer();
+
+  // Naviga subito alla schermata corretta (dati temporanei da localStorage).
+  // Il blocco async sotto aggiornerà tutto con i dati freschi da Supabase.
+  if (currentUser) {
+    if (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.AIUTANTE) {
+      var _staffScreenSync = document.getElementById('screenStaff');
+      if (_staffScreenSync) _staffScreenSync.classList.toggle('is-admin', currentUser.role === ROLES.ADMIN);
+      var _staffNameSync = document.getElementById('staffName');
+      if (_staffNameSync) _staffNameSync.textContent = currentUser.name.toUpperCase();
+      showTab('dashboard');
+      navigate('screenStaff');
+    } else {
+      navigate('screenHome');
+    }
+  }
 
   // Ascolta messaggi dal service worker via BroadcastChannel
   // (usato quando si clicca una notifica push con l'app già aperta)
@@ -4299,49 +4335,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Carica tutti i dati da Supabase in background.
   // FLUSSO:
-  // 1. Legge name+role dal localStorage e imposta currentUser PRIMA di loadAllData()
-  //    → loadAllData() scarica subito le tabelle giuste per il ruolo (spesa, chat, ecc.)
+  // 1. currentUser e _sessionToRestore già impostati in modo sincrono sopra
+  //    (lettura localStorage prima di buildAll per evitare flash splash/login)
   // 2. Dopo loadAllData(), aggiorna currentUser con i dati freschi dal DB (password, foto, ecc.)
   // 3. syncMagazzinoWithSpesa()+saveSpesa() solo se magazzino è stato caricato da Supabase
   //    → evita di sovrascrivere dati reali con i valori hardcodati (attuale=0)
   (async function() {
     try {
       _sbReady = true;
-
-      // ── Step 1: pre-ripristino sessione ──────────────────────────────────
-      // Imposta un currentUser temporaneo con name+role dal localStorage
-      // così loadAllData() usa subito il ruolo corretto.
-      var _sessionToRestore = null;
-      try {
-        var _savedSess = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
-        if (_savedSess) {
-          var _sess = JSON.parse(_savedSess);
-          var _elapsed = Date.now() - (_sess.ts || 0);
-          var _isPriv = (_sess.role === 'admin' || _sess.role === 'staff' || _sess.role === 'aiutante');
-          var _sessValida = _isPriv || (_elapsed < SESSION_TIMEOUT_USER);
-          if (_sessValida && _sess.name && _sess.role) {
-            currentUser = { name: _sess.name, role: _sess.role };
-            _sessionToRestore = _sess;
-            // ── Navigazione immediata pre-Supabase ───────────────────────────
-            // Mostra subito la schermata corretta usando i dati del localStorage,
-            // senza aspettare la risposta di Supabase (evita il flash splash/login).
-            // Step 6 ri-renderizza tutto dopo che i dati freschi arrivano dal DB.
-            buildAll();
-            if (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.AIUTANTE) {
-              var _staffScreenPre = document.getElementById('screenStaff');
-              if (_staffScreenPre) _staffScreenPre.classList.toggle('is-admin', currentUser.role === ROLES.ADMIN);
-              var _staffNamePre = document.getElementById('staffName');
-              if (_staffNamePre) _staffNamePre.textContent = currentUser.name.toUpperCase();
-              showTab('dashboard');
-              navigate('screenStaff');
-            } else {
-              navigate('screenHome');
-            }
-          } else {
-            localStorage.removeItem('bunker23_session');
-          }
-        }
-      } catch(e) {}
 
       // ── Step 2: carica dati con il ruolo già noto ─────────────────────────
       await loadAllData();
