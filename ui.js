@@ -538,13 +538,24 @@ function exitToSplash() {
   navigate('screenSplash');
 }
 
-// Timeout sessione — 30 minuti di inattività
+// Timeout sessione — nessun logout automatico per admin/staff, 7 giorni di inattività per gli altri
 var _sessionTimer = null;
-var SESSION_TIMEOUT = 30 * 60 * 1000; // 30 min
+var SESSION_TIMEOUT_USER = 7 * 24 * 60 * 60 * 1000; // 7 giorni (utenti non-staff)
+
+function _isPrivilegedRole(user) {
+  var u = user || currentUser;
+  return !!u && (u.role === ROLES.ADMIN || u.role === ROLES.STAFF || u.role === ROLES.AIUTANTE);
+}
 
 function resetSessionTimer() {
   if (!currentUser) return;
   clearTimeout(_sessionTimer);
+  _sessionTimer = null;
+
+  // Admin e Staff: nessun logout automatico per inattività
+  if (_isPrivilegedRole()) return;
+
+  // Altri utenti: logout dopo 7 giorni di inattività
   _sessionTimer = setTimeout(function() {
     if (!currentUser) return;
     showToast('// SESSIONE SCADUTA · EFFETTUA NUOVAMENTE IL LOGIN', 'error');
@@ -559,7 +570,7 @@ function resetSessionTimer() {
       updatePageCfgBtns();
       navigate('screenSplash');
     }, 2000);
-  }, SESSION_TIMEOUT);
+  }, SESSION_TIMEOUT_USER);
 }
 
 // Resetta il timer ad ogni interazione
@@ -3971,9 +3982,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (savedSession) {
       var sess = JSON.parse(savedSession);
       var elapsed = Date.now() - (sess.ts || 0);
-      var isStaffRole = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
-      var MAX_SESSION = isStaffRole ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
-      if (elapsed < MAX_SESSION) {
+      var isPrivileged = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
+      // Admin/Staff: sessione permanente (nessuna scadenza). Altri: 7 giorni di inattività.
+      var sessionValida = isPrivileged || (elapsed < SESSION_TIMEOUT_USER);
+      if (sessionValida) {
         var member = MEMBERS.find(function(m) { return m.name === sess.name; });
         if (member) {
           currentUser = member;
