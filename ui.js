@@ -666,6 +666,7 @@ function showTab(name) {
   if (name === 'calendario') buildSCal();
   if (name === 'profilo') {
     buildProfilo();
+    markMembersVisited();
     // Assicura visibilità gestione account per staff e admin
     var _ga = document.getElementById('gestioneAccountSection');
     if (_ga && currentUser && (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN)) {
@@ -3276,6 +3277,9 @@ function buildMembriList() {
   var btnNM = document.getElementById('btnNuovoMembro');
   if (btnNM) btnNM.style.display = canAddUser() ? '' : 'none';
 
+  // Badge nuovi utenti: leggi timestamp ultima visita
+  var _lastVisit = parseInt(localStorage.getItem('lastMembersVisit') || '0', 10);
+
   var groups = [
     { role: 'utente',   title: 'LV.1 · UTENTI' },
     { role: 'premium',  title: 'LV.2 · PREMIUM' },
@@ -3300,7 +3304,8 @@ function buildMembriList() {
       row.style.cssText = 'background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px;margin-bottom:4px;display:flex;align-items:center;gap:10px';
       var isSelf = currentUser && m.name === currentUser.name;
       var rl = roleLabel(m.role);
-      var avatarStyle = 'width:32px;height:32px;border-radius:50%;background:' + (m.photo ? 'transparent' : m.color) + ';display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;color:#fff;flex-shrink:0;overflow:hidden';
+      var _isNew = isStaff() && m.created_at && (new Date(m.created_at).getTime() > _lastVisit);
+      var avatarStyle = 'width:32px;height:32px;border-radius:50%;background:' + (m.photo ? 'transparent' : m.color) + ';display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;color:#fff;flex-shrink:0;overflow:hidden' + (_isNew ? ';box-shadow:0 0 0 2px #22cc44' : '');
       var avatarContent = m.photo ? '<img src="' + m.photo + '" style="width:100%;height:100%;object-fit:cover;display:block"/>' : m.initial;
       row.innerHTML =
         '<div style="' + avatarStyle + '">' + avatarContent + '</div>' +
@@ -3308,6 +3313,7 @@ function buildMembriList() {
           '<div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:' + (m.sospeso ? '#555' : 'var(--white)') + '">' + m.name.toUpperCase() +
             (m.sospeso ? '<span style="font-family:var(--mono);font-size:7px;color:#cc2200;letter-spacing:1px;margin-left:6px">⛔ SOSPESO</span>' : '') +
             (m.canPromote ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px">⬆ PROMUOVI</span>' : '') +
+            (_isNew ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px;border:1px solid #22cc44;padding:0 3px;border-radius:2px">NUOVO</span>' : '') +
           '</div>' +
           '<div style="font-family:monospace;font-size:8px;color:' + rl.color + ';letter-spacing:1px">' + rl.label + '</div>' +
         '</div>' +
@@ -3333,6 +3339,9 @@ function buildMembriList() {
       list.appendChild(row);
     });
   });
+
+  // Aggiorna badge nuovi utenti nel widget dashboard
+  updateNewMembersBadge();
 }
 
 async function cambiaPassword() {
@@ -4825,6 +4834,68 @@ async function doRegistrazione() {
   } catch(e) {
     err.textContent = '// ERRORE REGISTRAZIONE: ' + e.message;
   }
+}
+
+// ════════════════════════════════════════════════════════
+// BADGE NUOVI UTENTI — widget profilo dashboard
+// ════════════════════════════════════════════════════════
+
+/**
+ * Conta i membri con created_at > lastMembersVisit e mostra
+ * il numerino verde sull'icona 👤 del widget PROFILO.
+ * Usa solo MEMBERS (già in memoria) — zero query extra.
+ */
+function updateNewMembersBadge() {
+  if (!isStaff()) { _removeMembersBadge(); return; }
+
+  var lastVisit = parseInt(localStorage.getItem('lastMembersVisit') || '0', 10);
+  var count = 0;
+  if (Array.isArray(MEMBERS)) {
+    MEMBERS.forEach(function(m) {
+      if (m && m.created_at) {
+        var ts = new Date(m.created_at).getTime();
+        if (!isNaN(ts) && ts > lastVisit) count++;
+      }
+    });
+  }
+
+  var profiloWidget = document.querySelector('.dash-widget[onclick*="profilo"]');
+  if (!profiloWidget) return;
+
+  var badge = profiloWidget.querySelector('.members-new-badge');
+
+  if (count > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'members-new-badge';
+      badge.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;background:#22cc44;color:#000;font-family:monospace;font-size:9px;font-weight:bold;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;z-index:10;box-shadow:0 0 0 2px var(--bg,#0a0a0a);line-height:1';
+      if (!profiloWidget.style.position || profiloWidget.style.position === 'static') {
+        profiloWidget.style.position = 'relative';
+      }
+      profiloWidget.appendChild(badge);
+    }
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.style.display = 'flex';
+  } else {
+    _removeMembersBadge();
+  }
+}
+
+function _removeMembersBadge() {
+  var w = document.querySelector('.dash-widget[onclick*="profilo"]');
+  if (!w) return;
+  var b = w.querySelector('.members-new-badge');
+  if (b) b.style.display = 'none';
+}
+
+/**
+ * Salva il timestamp corrente come ultima visita alla sezione membri
+ * e azzera il badge. Chiamata da showTab() quando si apre 'profilo'.
+ */
+function markMembersVisited() {
+  if (!isStaff()) return;
+  localStorage.setItem('lastMembersVisit', String(Date.now()));
+  _removeMembersBadge();
 }
 
 // ════════════════════════════════════════════════════════
