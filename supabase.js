@@ -1327,24 +1327,26 @@ function initRealtime() {
         currentUser.role = dm.role;
         currentUser.color = dm.color;
         currentUser.sospeso = dm.sospeso || false;
-        // Se il ruolo è cambiato tra staff/admin e utente normale → switch realtime ↔ polling
-        var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
-        var isNowStaff = (dm.role === 'admin' || dm.role === 'staff');
-        if (wasStaff !== isNowStaff) {
-          console.log('[realtime] cambio ruolo rilevato (' + oldRole + ' → ' + dm.role + ') · riavvio connessione');
-          if (isNowStaff) {
-            stopPolling();
-            initRealtime();
-          } else {
-            stopRealtime();
-            initPolling();
+        // Se il ruolo è cambiato → switch realtime ↔ polling + ricarica dati
+        if (oldRole !== dm.role) {
+          var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
+          var isNowStaff = (dm.role === 'admin' || dm.role === 'staff');
+          if (wasStaff !== isNowStaff) {
+            console.log('[realtime] cambio ruolo rilevato (' + oldRole + ' → ' + dm.role + ') · riavvio connessione');
+            if (isNowStaff) {
+              stopPolling();
+              initRealtime();
+            } else {
+              stopRealtime();
+              initPolling();
+            }
           }
+          // Ricarica le tabelle in base al nuovo ruolo (senza reload pagina)
+          reloadStaffData().then(function() {
+            if (typeof buildAll === 'function') buildAll();
+            showToast('// RUOLO AGGIORNATO: ' + dm.role.toUpperCase(), 'success');
+          });
         }
-        // Ricarica le tabelle in base al nuovo ruolo (senza reload pagina)
-        reloadStaffData().then(function() {
-          if (typeof buildAll === 'function') buildAll();
-          showToast('// RUOLO AGGIORNATO: ' + dm.role.toUpperCase(), 'success');
-        });
         // Aggiorna UI ruolo ovunque visibile
         var rlEl = document.getElementById('staffRole');
         if (rlEl && typeof roleLabel === 'function') rlEl.textContent = roleLabel(dm.role).label;
@@ -1508,9 +1510,8 @@ async function _pollPublicData() {
     // 0. CONFIG → aggiorna BACHECA, INFO, CONSIGLIATI, EVENTI_VALUTAZIONI
     try {
       var cfgRes = results[0];
-      if (cfgRes.data) {
-        // La query selettiva restituisce i campi direttamente nella riga (non dentro .data)
-        var cfg = cfgRes.data;
+      if (cfgRes.data && cfgRes.data.data) {
+        var cfg = cfgRes.data.data;
         if (cfg.BACHECA)            BACHECA = cfg.BACHECA;
         if (cfg.INFO)               INFO = cfg.INFO;
         if (cfg.CONSIGLIATI)        CONSIGLIATI = cfg.CONSIGLIATI;
