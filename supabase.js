@@ -713,10 +713,19 @@ async function loadAllData() {
   var sb = getSupabase();
 
   // ── BATCH 1 (parallelo): config + members ─────────────────────────────────
-  // members deve essere disponibile prima del LOG (batch 2) che lo referenzia
+  // members deve essere disponibile prima del LOG (batch 2) che lo referenzia.
+  // Per Lv1/Lv2 scarica solo le colonne necessarie alla UI pubblica:
+  // name, initial, color, role, foto_url, sospeso — no password_hash, no can_create_profiles.
+  // Staff e admin scaricano tutto (*) per gestire il pannello membri.
+  var _roleEarly = currentUser ? currentUser.role : '';
+  var _isLv12Early = (_roleEarly === 'utente' || _roleEarly === 'premium' || _roleEarly === '');
+  var _membersSelect = _isLv12Early
+    ? 'name,initial,color,role,foto_url,sospeso'
+    : '*';
+
   var batch1 = await Promise.all([
     sb.from('appconfig').select('data').eq('id', 1).single(),
-    sb.from('members').select('*'),
+    sb.from('members').select(_membersSelect),
   ]);
 
   // 1. CONFIG
@@ -750,25 +759,35 @@ async function loadAllData() {
   var _role2 = currentUser ? currentUser.role : '';
   var _isLv12 = (_role2 === 'utente' || _role2 === 'premium' || _role2 === '');
   var _isAiut = (_role2 === 'aiutante');
+  var _isStaff = (_role2 === 'staff' || _role2 === 'admin');
 
-  var _loadSpesa     = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.spesa);
-  var _loadLavori    = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.lavori);
-  var _loadMagazzino = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.magazzino);
-  var _loadPagamenti = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.pagamenti);
-  var _loadChat      = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
+  var _loadSpesa      = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.spesa);
+  var _loadLavori     = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.lavori);
+  var _loadMagazzino  = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.magazzino);
+  var _loadPagamenti  = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.pagamenti);
+  var _loadChat       = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
+  // Log: solo staff e admin (gli utenti normali non vedono mai il pannello log)
+  var _loadLog        = _isStaff;
+  // Contatori: solo staff/admin (tab contatori protetta da canViewContatori)
+  var _loadContatori  = !_isLv12;
+
+  // Colonne calendario: utenti normali non hanno bisogno dei campi notifica (sono gestiti solo dallo staff)
+  var _calSelect = _isLv12
+    ? 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina'
+    : '*';
 
   var _empty = Promise.resolve({ data: [], error: null });
   var batch2 = await Promise.all([
-    sb.from('calendario').select('*').order('data', { ascending: true }),                                  // 0 — sempre
+    sb.from('calendario').select(_calSelect).order('data', { ascending: true }),                           // 0 — sempre
     _loadSpesa     ? sb.from('spesa').select('*')                                       : _empty,          // 1
     _loadLavori    ? sb.from('lavori').select('*')                                      : _empty,          // 2
     _loadMagazzino ? sb.from('magazzino').select('*')                                   : _empty,          // 3
     _loadPagamenti ? sb.from('pagamenti').select('*')                                   : _empty,          // 4
     _loadChat      ? sb.from('chat').select('*').order('ts', { ascending: true }).limit(200) : _empty,    // 5
-    sb.from('log').select('*').order('ts', { ascending: false }).limit(500),                               // 6 — sempre
+    _loadLog       ? sb.from('log').select('*').order('ts', { ascending: false }).limit(100) : _empty,    // 6 — solo staff (ridotto da 500 a 100)
     sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 7 — sempre
     sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                  // 8 — sempre
-    sb.from('contatori').select('*'),                                                                      // 9 — sempre
+    _loadContatori ? sb.from('contatori').select('*')                                   : _empty,          // 9 — solo Lv3+
   ]);
 
   // 3. CALENDARIO
@@ -1523,12 +1542,16 @@ async function _pollPublicData() {
     // ─────────────────────────────────────────────────────────────────────
 
     // Fetch parallelo: config (bacheca, info, consigliati, valutazioni, suggerimenti),
-    // calendario, valutazioni, suggerimenti
+    // calendario, valutazioni, suggerimenti.
+    // Per utenti normali il calendario non include i campi notifica (gestiti solo dallo staff).
+    var _pollCalSelect = currentUser && (currentUser.role === 'staff' || currentUser.role === 'admin')
+      ? '*'
+      : 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina';
     var results = await Promise.all([
-      sb.from('appconfig').select('data').eq('id', 1).single(),         // 0 — config
-      sb.from('calendario').select('*').order('data', { ascending: true }), // 1 — eventi
-      sb.from('suggerimenti').select('*').order('ts', { ascending: false }), // 2
-      sb.from('valutazioni').select('*').order('ts', { ascending: false }),  // 3
+      sb.from('appconfig').select('data').eq('id', 1).single(),                                          // 0 — config
+      sb.from('calendario').select(_pollCalSelect).order('data', { ascending: true }),                   // 1 — eventi
+      sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                             // 2
+      sb.from('valutazioni').select('*').order('ts', { ascending: false }),                              // 3
     ]);
 
     // 0. CONFIG → aggiorna BACHECA, INFO, CONSIGLIATI, EVENTI_VALUTAZIONI
