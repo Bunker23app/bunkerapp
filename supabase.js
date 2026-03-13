@@ -5,6 +5,10 @@ var SUPABASE_URL = 'https://ndcpekgxnawxwbvfseba.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kY3Bla2d4bmF3eHdidmZzZWJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NzU5NjksImV4cCI6MjA4ODQ1MTk2OX0.EmvG_iqAO3JcgCPk49fwEGcQQIOkeZhN076PuklD118';
 var _sb = null;
 var _sbReady = false;
+// true solo quando magazzino è stato caricato da Supabase con dati reali.
+// Usato per evitare che syncMagazzinoWithSpesa+saveSpesa sovrascrivano i dati
+// reali su Supabase quando magazzino è ancora quello hardcodato (attuale=0).
+var _magazzinoLoadedFromDb = false;
 // Timer per debounce salvataggi non-realtime
 var _saveTimers = {};
 // Configurazione sezioni DB caricate per gli aiutanti (letta da appconfig.AIUTANTE_SECTIONS)
@@ -822,6 +826,7 @@ async function loadAllData() {
         var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
         if (item) item.attuale = row.attuale;
       });
+      _magazzinoLoadedFromDb = true;
     }
   } catch(e) { console.warn('[load magazzino]', e.message); }
 

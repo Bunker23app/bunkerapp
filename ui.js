@@ -4297,63 +4297,75 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   } catch(e) {}
 
-  // Carica tutti i dati da Supabase in background
-  // Il ripristino sessione avviene DOPO loadAllData() così MEMBERS è già popolato da DB
+  // Carica tutti i dati da Supabase in background.
+  // FLUSSO:
+  // 1. Legge name+role dal localStorage e imposta currentUser PRIMA di loadAllData()
+  //    → loadAllData() scarica subito le tabelle giuste per il ruolo (spesa, chat, ecc.)
+  // 2. Dopo loadAllData(), aggiorna currentUser con i dati freschi dal DB (password, foto, ecc.)
+  // 3. syncMagazzinoWithSpesa()+saveSpesa() solo se magazzino è stato caricato da Supabase
+  //    → evita di sovrascrivere dati reali con i valori hardcodati (attuale=0)
   (async function() {
     try {
       _sbReady = true;
-      await loadAllData();
 
-      // ── Ripristina sessione (skip se c'è un invito pendente) ──────────────
-      // Eseguito QUI, dopo loadAllData(), così MEMBERS contiene già i dati reali da Supabase.
-      // Se eseguito prima, MEMBERS è vuoto → member non trovato → sessione cancellata.
+      // ── Step 1: pre-ripristino sessione ──────────────────────────────────
+      // Imposta un currentUser temporaneo con name+role dal localStorage
+      // così loadAllData() usa subito il ruolo corretto.
+      var _sessionToRestore = null;
       try {
-        var savedSession = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
-        if (savedSession) {
-          var sess = JSON.parse(savedSession);
-          var elapsed = Date.now() - (sess.ts || 0);
-          var isPrivileged = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
-          var sessionValida = isPrivileged || (elapsed < SESSION_TIMEOUT_USER);
-          if (sessionValida) {
-            var member = MEMBERS.find(function(m) { return m.name === sess.name; });
-            if (member) {
-              currentUser = member;
-              localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
-              resetSessionTimer();
-              // Ricarica dati con il ruolo corretto (loadAllData sopra girava come guest)
-              await loadAllData();
-            } else {
-              localStorage.removeItem('bunker23_session');
-            }
+        var _savedSess = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
+        if (_savedSess) {
+          var _sess = JSON.parse(_savedSess);
+          var _elapsed = Date.now() - (_sess.ts || 0);
+          var _isPriv = (_sess.role === 'admin' || _sess.role === 'staff' || _sess.role === 'aiutante');
+          var _sessValida = _isPriv || (_elapsed < SESSION_TIMEOUT_USER);
+          if (_sessValida && _sess.name && _sess.role) {
+            currentUser = { name: _sess.name, role: _sess.role };
+            _sessionToRestore = _sess;
           } else {
             localStorage.removeItem('bunker23_session');
           }
         }
       } catch(e) {}
-      // ─────────────────────────────────────────────────────────────────────
 
-      // Carica cronologia utenti in bulk per ricerca/filtri avanzati (solo staff/admin)
+      // ── Step 2: carica dati con il ruolo già noto ─────────────────────────
+      await loadAllData();
+
+      // ── Step 3: aggiorna currentUser con dati freschi dal DB ─────────────
+      if (_sessionToRestore) {
+        var _memberFresh = MEMBERS.find(function(m) { return m.name === _sessionToRestore.name; });
+        if (_memberFresh) {
+          currentUser = _memberFresh;
+          localStorage.setItem('bunker23_session', JSON.stringify({ name: _memberFresh.name, role: _memberFresh.role, ts: Date.now() }));
+          resetSessionTimer();
+        } else {
+          // Utente non trovato nel DB (eliminato) → invalida la sessione
+          currentUser = null;
+          localStorage.removeItem('bunker23_session');
+        }
+      }
+
+      // ── Step 4: cronologia utenti (solo staff/admin) ──────────────────────
       if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) {
         if (typeof historyLoadAll === 'function') {
           MEMBERS_HISTORY = await historyLoadAll();
         }
       }
 
-      // Sincronizza spesa col magazzino solo se l'utente ha accesso alla spesa
-      // (evita di sovrascrivere dati reali su Supabase quando si è guest o Lv1/Lv2)
-      var _canAccessSpesa = currentUser &&
-        (currentUser.role === 'admin' || currentUser.role === 'staff' ||
-         (currentUser.role === 'aiutante' && AIUTANTE_CONFIG.spesa));
-      if (_canAccessSpesa) {
+      // ── Step 5: sync spesa↔magazzino SOLO se magazzino è stato caricato da DB ──
+      // Se _magazzinoLoadedFromDb è false significa che il ruolo non aveva accesso
+      // al magazzino → MAGAZZINO è ancora hardcodato con attuale=0 → NON salvare
+      // su Supabase altrimenti si sovrascrivono i dati reali.
+      if (_magazzinoLoadedFromDb) {
         syncMagazzinoWithSpesa();
         saveSpesa();
       }
 
+      // ── Step 6: build UI e navigazione ───────────────────────────────────
       buildAll();
       if (currentUser) {
-        // Aggiorna riferimento currentUser con dati freschi da DB
-        var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
-        if (updated) currentUser = updated;
+        applyWidgetConfig();
+        applyTabConfig();
         updatePageCfgBtns();
         if (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.AIUTANTE) {
           renderAvatar(document.getElementById('staffAvatar'), currentUser);
@@ -4366,34 +4378,26 @@ document.addEventListener('DOMContentLoaded', function() {
           applyTabConfig();
           showTab('dashboard');
         }
+        applyPageSections('home');
+        applyPageSections('bacheca');
+        applyPageSections('info');
         navigate('screenHome');
         showToast('// BENTORNATO ' + currentUser.name.toUpperCase(), 'ok');
+      } else {
+        applyPageSections('home');
+        applyPageSections('bacheca');
+        applyPageSections('info');
       }
-      // Applica subito la config delle sezioni appena i dati Supabase sono pronti
-      applyPageSections('home');
-      applyPageSections('bacheca');
-      applyPageSections('info');
       updateHomeAccessLevel();
-      // Avvia realtime (staff/admin) o polling (altri ruoli/guest) DOPO che i dati
-      // sono stati caricati dal DB e currentUser è aggiornato con il ruolo reale.
-      if (typeof onUserLogin === 'function') {
-        onUserLogin();
-      }
-      if (typeof requestPushPermissionAndRegister === 'function') {
-        requestPushPermissionAndRegister();
-      }
-      if (typeof ripianificaTuttiReminder === 'function') {
-        ripianificaTuttiReminder();
-      }
-      // Controlla se c'è un token invito nell'URL
-      if (typeof checkInviteToken === 'function') {
-        checkInviteToken();
-      }
-      // Se c'è un evento pendente da notifica push e l'utente è già loggato, naviga subito.
-      if (_pendingEventoId && currentUser) {
-        navigaAdEvento(_pendingEventoId);
-      }
-      console.log('Supabase: tutti i dati caricati');
+
+      // ── Step 7: avvia realtime/polling e servizi ──────────────────────────
+      if (typeof onUserLogin === 'function') onUserLogin();
+      if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
+      if (typeof ripianificaTuttiReminder === 'function') ripianificaTuttiReminder();
+      if (typeof checkInviteToken === 'function') checkInviteToken();
+      if (_pendingEventoId && currentUser) navigaAdEvento(_pendingEventoId);
+
+      console.log('Supabase: tutti i dati caricati · ruolo: ' + (currentUser ? currentUser.role : 'guest'));
     } catch(e) {
       console.warn('Supabase non raggiungibile:', e.message);
       _sbReady = false;
