@@ -1391,7 +1391,7 @@ function onUserLogout() {
 
 var _pollingTimer  = null;
 var _pollingActive = false;
-var POLLING_INTERVAL = 3 * 60 * 1000; // 3 minuti
+var POLLING_INTERVAL = 5 * 60 * 1000; // 5 minuti
 
 // Logout forzato con messaggio dedicato (es. account eliminato o sospeso)
 function _forceLogout(motivo) {
