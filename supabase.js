@@ -1593,6 +1593,19 @@ async function historyLoadMember(memberName) {
   } catch(e) { console.warn('[sb.members_history load]', e.message); return null; }
 }
 
+// Legge TUTTA la tabella members_history in bulk (usata per ricerca/filtri avanzati)
+async function historyLoadAll() {
+  if (!_sbReady) return [];
+  try {
+    var res = await getSupabase()
+      .from('members_history')
+      .select('member_name, initial_name, creation_method, invited_by, name_changes, created_at')
+      .order('created_at', { ascending: false });
+    if (res.error) { console.warn('[sb.members_history loadAll]', res.error.message); return []; }
+    return res.data || [];
+  } catch(e) { console.warn('[sb.members_history loadAll]', e.message); return []; }
+}
+
 // ── PATCH addLog per salvare su tabella log ──
 migratePasswords();
 

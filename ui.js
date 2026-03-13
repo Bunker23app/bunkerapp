@@ -13,6 +13,18 @@ const MEMBERS = [
   // [nessun utente di default — creare gli utenti dall'app]
 ];
 
+// Cache cronologia utenti — caricata in bulk all'avvio per ricerca/filtri avanzati
+var MEMBERS_HISTORY = [];
+
+// Stato filtri widget membri
+var _membriFilter = {
+  query:         '',
+  searchOriginal: false,
+  method:        'all',   // 'all' | 'qr' | 'manual'
+  invitedBy:     'all',   // 'all' | <nome invitante>
+  role:          'all',   // 'all' | 'admin' | 'staff' | 'aiutante' | 'premium' | 'utente'
+};
+
 // Livello accesso corrente: null=ospite, 'utente'=registrato, 'staff'/'admin'=staff
 // guestMode: true quando si entra con ENTRA (nessun login)
 
@@ -3271,11 +3283,164 @@ function roleLabel(role) {
 function buildMembriList() {
   var list = document.getElementById('membriList');
   if (!list) return;
-  list.innerHTML = '';
 
   // Mostra/nascondi il pulsante "Nuovo membro" in base al permesso configurato
   var btnNM = document.getElementById('btnNuovoMembro');
   if (btnNM) btnNM.style.display = canAddUser() ? '' : 'none';
+
+  // ── BARRA RICERCA + FILTRI (solo staff/admin) ──────────────────────────────
+  var filterBarId = 'membriFilterBar';
+  var existingBar = document.getElementById(filterBarId);
+
+  if (isStaff()) {
+    if (!existingBar) {
+      // Prima costruzione: inietta il markup nel DOM PRIMA di membriList
+      var bar = document.createElement('div');
+      bar.id = filterBarId;
+      bar.style.cssText = 'margin-bottom:10px';
+
+      // Raccoglie lista invitanti unici da MEMBERS_HISTORY
+      function getInvitanti() {
+        var seen = {};
+        var list = [];
+        if (Array.isArray(MEMBERS_HISTORY)) {
+          MEMBERS_HISTORY.forEach(function(h) {
+            if (h.invited_by && !seen[h.invited_by]) {
+              seen[h.invited_by] = true;
+              list.push(h.invited_by);
+            }
+          });
+        }
+        return list.sort();
+      }
+
+      var invitanti = getInvitanti();
+      var invitantiOptions = '<option value="all">// TUTTI GLI INVITANTI</option>' +
+        invitanti.map(function(n) { return '<option value="' + n + '">' + n.toUpperCase() + '</option>'; }).join('');
+
+      bar.innerHTML =
+        // Riga 1: ricerca testuale
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
+          '<input id="membriSearchInput" type="text" placeholder="// CERCA MEMBRO..." ' +
+            'style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:6px 8px;border-radius:3px;outline:none" ' +
+            'oninput="_membriFilter.query=this.value;buildMembriList()" ' +
+            'value="' + (_membriFilter.query || '') + '">' +
+          '<button style="background:none;border:1px solid var(--border);border-radius:3px;padding:5px 8px;color:#555;font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:1px;white-space:nowrap" ' +
+            'title="Reimposta tutti i filtri" onclick="_resetMembriFilter()">' +
+            '✕ RESET' +
+          '</button>' +
+        '</div>' +
+        // Riga 2: toggle cerca per nome originale
+        '<label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer">' +
+          '<input type="checkbox" id="membriSearchOriginal" ' + (_membriFilter.searchOriginal ? 'checked' : '') + ' ' +
+            'onchange="_membriFilter.searchOriginal=this.checked;buildMembriList()" ' +
+            'style="accent-color:#cc2200;cursor:pointer">' +
+          '<span style="font-family:var(--mono);font-size:8px;letter-spacing:1px;color:#777">CERCA ANCHE PER NOME ORIGINALE</span>' +
+        '</label>' +
+        // Riga 3: filtri a pills
+        '<div style="display:flex;flex-wrap:wrap;gap:5px">' +
+          // Metodo creazione
+          '<select id="membriFilterMethod" style="background:var(--bg);border:1px solid var(--border);color:#aaa;font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 6px;border-radius:3px;cursor:pointer" ' +
+            'onchange="_membriFilter.method=this.value;buildMembriList()">' +
+            '<option value="all"' + (_membriFilter.method==='all'?' selected':'') + '>// TUTTI I METODI</option>' +
+            '<option value="qr"' + (_membriFilter.method==='qr'?' selected':'') + '>QR INVITE</option>' +
+            '<option value="manual"' + (_membriFilter.method==='manual'?' selected':'') + '>CREATO DA STAFF</option>' +
+          '</select>' +
+          // Filtro ruolo
+          '<select id="membriFilterRole" style="background:var(--bg);border:1px solid var(--border);color:#aaa;font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 6px;border-radius:3px;cursor:pointer" ' +
+            'onchange="_membriFilter.role=this.value;buildMembriList()">' +
+            '<option value="all"' + (_membriFilter.role==='all'?' selected':'') + '>// TUTTI I RUOLI</option>' +
+            '<option value="admin"' + (_membriFilter.role==='admin'?' selected':'') + '>ADMIN</option>' +
+            '<option value="staff"' + (_membriFilter.role==='staff'?' selected':'') + '>STAFF</option>' +
+            '<option value="aiutante"' + (_membriFilter.role==='aiutante'?' selected':'') + '>AIUTANTE</option>' +
+            '<option value="premium"' + (_membriFilter.role==='premium'?' selected':'') + '>PREMIUM</option>' +
+            '<option value="utente"' + (_membriFilter.role==='utente'?' selected':'') + '>UTENTE</option>' +
+          '</select>' +
+          // Filtro invitante
+          (invitanti.length > 0
+            ? '<select id="membriFilterInvitedBy" style="background:var(--bg);border:1px solid var(--border);color:#aaa;font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 6px;border-radius:3px;cursor:pointer" ' +
+                'onchange="_membriFilter.invitedBy=this.value;buildMembriList()">' +
+                invitantiOptions +
+              '</select>'
+            : '') +
+        '</div>';
+
+      list.parentNode.insertBefore(bar, list);
+    } else {
+      // Barra già presente: aggiorna solo i valori degli invitanti nel dropdown
+      var selInv = document.getElementById('membriFilterInvitedBy');
+      // Rigenera gli option dell'invitante per riflettere nuovi QR generati
+      if (selInv && Array.isArray(MEMBERS_HISTORY)) {
+        var seen2 = {}; var invList = [];
+        MEMBERS_HISTORY.forEach(function(h) {
+          if (h.invited_by && !seen2[h.invited_by]) { seen2[h.invited_by] = true; invList.push(h.invited_by); }
+        });
+        invList.sort();
+        selInv.innerHTML = '<option value="all">// TUTTI GLI INVITANTI</option>' +
+          invList.map(function(n) { return '<option value="' + n + '"' + (_membriFilter.invitedBy===n?' selected':'') + '>' + n.toUpperCase() + '</option>'; }).join('');
+      }
+    }
+  } else {
+    // Non è staff: rimuove la barra se era rimasta (cambio ruolo in sessione)
+    if (existingBar) existingBar.parentNode.removeChild(existingBar);
+  }
+
+  list.innerHTML = '';
+
+  // ── LOGICA FILTRO ──────────────────────────────────────────────────────────
+  var q = (_membriFilter.query || '').toLowerCase().trim();
+  var fMethod = _membriFilter.method || 'all';
+  var fRole   = _membriFilter.role   || 'all';
+  var fInv    = _membriFilter.invitedBy || 'all';
+  var fSearchOrig = !!_membriFilter.searchOriginal;
+
+  // Costruisce lookup di members_history indicizzato per member_name
+  var historyMap = {};
+  if (Array.isArray(MEMBERS_HISTORY)) {
+    MEMBERS_HISTORY.forEach(function(h) {
+      if (h.member_name) historyMap[h.member_name.toLowerCase()] = h;
+    });
+  }
+
+  function memberPassesFilter(m) {
+    // Filtro ruolo
+    if (fRole !== 'all' && m.role !== fRole) return false;
+
+    var hist = historyMap[m.name.toLowerCase()];
+
+    // Filtro metodo creazione
+    if (fMethod !== 'all') {
+      if (!hist) return false;
+      if (hist.creation_method !== fMethod) return false;
+    }
+
+    // Filtro invitante
+    if (fInv !== 'all') {
+      if (!hist || hist.invited_by !== fInv) return false;
+    }
+
+    // Filtro testo ricerca
+    if (q) {
+      var nameMatch = m.name.toLowerCase().indexOf(q) !== -1;
+      if (nameMatch) return true;
+      if (fSearchOrig && hist) {
+        // Cerca in initial_name
+        if (hist.initial_name && hist.initial_name.toLowerCase().indexOf(q) !== -1) return true;
+        // Cerca in name_changes (tutti i vecchi nomi)
+        if (Array.isArray(hist.name_changes)) {
+          for (var nc = 0; nc < hist.name_changes.length; nc++) {
+            var change = hist.name_changes[nc];
+            if (change.old_name && change.old_name.toLowerCase().indexOf(q) !== -1) return true;
+            if (change.new_name && change.new_name.toLowerCase().indexOf(q) !== -1) return true;
+          }
+        }
+        return false;
+      }
+      if (!nameMatch) return false;
+    }
+
+    return true;
+  }
 
   // Badge nuovi utenti: leggi timestamp ultima visita
   var _lastVisit = parseInt(localStorage.getItem('lastMembersVisit') || '0', 10);
@@ -3288,10 +3453,17 @@ function buildMembriList() {
     { role: 'admin',    title: 'LV.5 · ADMIN' },
   ];
 
+  var totalShown = 0;
+
   groups.forEach(function(g) {
+    // Se filtro ruolo attivo e non corrisponde, salta tutto il gruppo
+    if (fRole !== 'all' && g.role !== fRole) return;
+
     var members = MEMBERS.map(function(m, i) { return { m: m, i: i }; })
-                         .filter(function(x) { return x.m.role === g.role; });
+                         .filter(function(x) { return x.m.role === g.role && memberPassesFilter(x.m); });
     if (members.length === 0) return;
+
+    totalShown += members.length;
 
     var header = document.createElement('div');
     header.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#555;margin:10px 0 4px';
@@ -3307,6 +3479,18 @@ function buildMembriList() {
       var _isNew = isStaff() && m.created_at && (new Date(m.created_at).getTime() > _lastVisit);
       var avatarStyle = 'width:32px;height:32px;border-radius:50%;background:' + (m.photo ? 'transparent' : m.color) + ';display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:12px;color:#fff;flex-shrink:0;overflow:hidden' + (_isNew ? ';box-shadow:0 0 0 2px #22cc44' : '');
       var avatarContent = m.photo ? '<img src="' + m.photo + '" style="width:100%;height:100%;object-fit:cover;display:block"/>' : m.initial;
+
+      // Sottotitolo: invitante/metodo (solo staff e se presente in history)
+      var hist = historyMap[m.name.toLowerCase()];
+      var subtitleHtml = '';
+      if (isStaff() && hist) {
+        if (hist.creation_method === 'qr' && hist.invited_by) {
+          subtitleHtml = '<div style="font-family:var(--mono);font-size:7px;color:#555;letter-spacing:1px;margin-top:1px">· INV. DA ' + hist.invited_by.toUpperCase() + '</div>';
+        } else if (hist.creation_method === 'manual') {
+          subtitleHtml = '<div style="font-family:var(--mono);font-size:7px;color:#444;letter-spacing:1px;margin-top:1px">· STAFF</div>';
+        }
+      }
+
       row.innerHTML =
         '<div style="' + avatarStyle + '">' + avatarContent + '</div>' +
         '<div style="flex:1">' +
@@ -3316,21 +3500,19 @@ function buildMembriList() {
             (_isNew ? '<span style="font-family:var(--mono);font-size:7px;color:#22cc44;letter-spacing:1px;margin-left:6px;border:1px solid #22cc44;padding:0 3px;border-radius:2px">NUOVO</span>' : '') +
           '</div>' +
           '<div style="font-family:monospace;font-size:8px;color:' + rl.color + ';letter-spacing:1px">' + rl.label + '</div>' +
+          subtitleHtml +
         '</div>' +
         // Pulsante cronologia — visibile solo a staff e admin
         (isStaff()
           ? '<button class="edit-btn-small visible" title="Cronologia" onclick="openMemberHistoryModal(\'' + m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')" style="margin-right:4px;font-size:10px">📋</button>'
           : '') +
         (isAdmin()
-          // Admin: pulsante edit completo + elimina
           ? '<button class="edit-btn-small visible" onclick="openEditMembroModal(' + i + ')" style="margin-right:4px">✏</button>' +
             (!isSelf ? '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>' : '<span style="width:28px"></span>')
-          // canPromote (non admin): pulsante promuovi + sospendi + elimina
           : (canPromoteUsers() && !isSelf
               ? '<button class="edit-btn-small visible" style="color:#22cc44;border-color:#116611;margin-right:4px" onclick="openPromoteModal(' + i + ')" title="Cambia livello">⬆</button>' +
                 '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + ';margin-right:4px" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
                 '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100" onclick="rimuoviMembro(' + i + ')">✕</button>'
-              // Staff normale: solo sospendi + elimina
               : (!isSelf
                   ? '<button class="edit-btn-small visible" style="color:' + (m.sospeso ? '#22cc44' : '#cc8800') + ';border-color:' + (m.sospeso ? '#116611' : '#664400') + '" onclick="toggleSospesoMembro(' + i + ')" title="' + (m.sospeso ? 'Riattiva' : 'Sospendi') + '">' + (m.sospeso ? '▶' : '⏸') + '</button>' +
                     '<button class="edit-btn-small visible" style="color:#cc2200;border-color:#661100;margin-left:4px" onclick="rimuoviMembro(' + i + ')">✕</button>'
@@ -3340,8 +3522,37 @@ function buildMembriList() {
     });
   });
 
+  // Messaggio "nessun risultato"
+  if (totalShown === 0 && (q || fMethod !== 'all' || fRole !== 'all' || fInv !== 'all')) {
+    var noRes = document.createElement('div');
+    noRes.style.cssText = 'font-family:var(--mono);font-size:9px;color:#555;letter-spacing:2px;text-align:center;padding:16px 0';
+    noRes.textContent = '// NESSUN RISULTATO';
+    list.appendChild(noRes);
+  }
+
   // Aggiorna badge nuovi utenti nel widget dashboard
   updateNewMembersBadge();
+}
+
+// Reimposta tutti i filtri membri e ricostruisce la lista
+function _resetMembriFilter() {
+  _membriFilter.query         = '';
+  _membriFilter.searchOriginal = false;
+  _membriFilter.method        = 'all';
+  _membriFilter.invitedBy     = 'all';
+  _membriFilter.role          = 'all';
+  // Resetta i campi visivi
+  var si = document.getElementById('membriSearchInput');
+  if (si) si.value = '';
+  var so = document.getElementById('membriSearchOriginal');
+  if (so) so.checked = false;
+  var sm = document.getElementById('membriFilterMethod');
+  if (sm) sm.value = 'all';
+  var sr = document.getElementById('membriFilterRole');
+  if (sr) sr.value = 'all';
+  var sinv = document.getElementById('membriFilterInvitedBy');
+  if (sinv) sinv.value = 'all';
+  buildMembriList();
 }
 
 async function cambiaPassword() {
@@ -4047,6 +4258,12 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       _sbReady = true;
       await loadAllData();
+      // Carica cronologia utenti in bulk per ricerca/filtri avanzati (solo staff/admin)
+      if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) {
+        if (typeof historyLoadAll === 'function') {
+          MEMBERS_HISTORY = await historyLoadAll();
+        }
+      }
       // Pulizia una-tantum: rimuove duplicati accumulati in passato nella tabella spesa
       await cleanupDuplicateSpesa();
       // Sincronizza spesa col magazzino (una sola volta al caricamento) e salva
