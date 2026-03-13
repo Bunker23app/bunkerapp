@@ -4351,8 +4351,7 @@ document.addEventListener('DOMContentLoaded', function() {
           MEMBERS_HISTORY = await historyLoadAll();
         }
       }
-      // Pulizia una-tantum: rimuove duplicati accumulati in passato nella tabella spesa
-      await cleanupDuplicateSpesa();
+      // [cleanup duplicati spesa rimosso: problema risolto a DB, funzione legacy eliminata]
       // Sincronizza spesa col magazzino (una sola volta al caricamento) e salva
       syncMagazzinoWithSpesa();
       saveSpesa();
