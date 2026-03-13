@@ -509,6 +509,47 @@ async function saveLogEntry(entry) {
   } catch(e) { console.warn('[sb.log]', e.message); }
 }
 
+// ── STORAGE LOCANDINE ────────────────────────────────────────────────────────
+// Carica un blob (da base64) nel bucket "locandine" e restituisce l'URL pubblico.
+// eventoId: usato come nome file univoco (es. "evento_42.jpg")
+async function uploadLocandina(b64, eventoId) {
+  if (!_sbReady) return null;
+  try {
+    // Converte base64 → Blob
+    var parts = b64.split(',');
+    var mime  = parts[0].match(/:(.*?);/)[1];           // es. image/jpeg
+    var ext   = mime.split('/')[1] || 'jpg';
+    var byteStr = atob(parts[1]);
+    var arr = new Uint8Array(byteStr.length);
+    for (var i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+    var blob = new Blob([arr], { type: mime });
+
+    var fileName = 'evento_' + eventoId + '_' + Date.now() + '.' + ext;
+    var res = await getSupabase().storage.from('locandine').upload(fileName, blob, {
+      contentType: mime,
+      upsert: true,
+    });
+    if (res.error) { console.warn('[storage.locandine upload]', res.error.message); return null; }
+
+    var urlRes = getSupabase().storage.from('locandine').getPublicUrl(fileName);
+    return urlRes.data.publicUrl || null;
+  } catch(e) { console.warn('[storage.locandine upload]', e.message); return null; }
+}
+
+// Cancella il file dal bucket "locandine" dato il suo URL pubblico.
+async function deleteLocandina(url) {
+  if (!_sbReady || !url) return;
+  try {
+    // Estrai il nome file dall'URL pubblico
+    var marker = '/object/public/locandine/';
+    var idx = url.indexOf(marker);
+    if (idx === -1) return; // non è un file Storage nostro, skip
+    var fileName = url.slice(idx + marker.length);
+    var res = await getSupabase().storage.from('locandine').remove([fileName]);
+    if (res.error) console.warn('[storage.locandine delete]', res.error.message);
+  } catch(e) { console.warn('[storage.locandine delete]', e.message); }
+}
+
 // SVUOTA CHAT / LOG
 async function clearChatRemote() {
   if (!_sbReady) return;

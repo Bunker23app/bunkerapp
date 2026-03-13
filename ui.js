@@ -2377,12 +2377,17 @@ function updateDash() {
 function deleteEvento(i) {
   if (!canEdit()) return;
   showConfirm('Eliminare "' + EVENTI[i].nome + '"?', function() {
-    var evId = EVENTI[i].id;
+    var evId  = EVENTI[i].id;
+    var evLoc = EVENTI[i].locandina;
     addLog('eliminato evento: ' + EVENTI[i].nome);
     EVENTI.splice(i, 1);
     if (evId && EVENTI_VALUTAZIONI[evId]) { delete EVENTI_VALUTAZIONI[evId]; saveConfig(); }
     saveEventi();
     _sbDeleteById('calendario', evId);
+    // Cancella la locandina da Storage se era un file caricato (non base64 legacy)
+    if (evLoc && evLoc.indexOf('/storage/v1/object/public/locandine/') !== -1) {
+      deleteLocandina(evLoc);
+    }
     sCalSel = null;
     buildAll();
     showToast('// EVENTO ELIMINATO', 'error');
@@ -2478,7 +2483,7 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
     }
   }, 50);
 
-  window._modalCb = function() {
+  window._modalCb = async function() {
     var locandinaFile = document.getElementById('mLocandinaFile');
     var nome   = document.getElementById('mNome').value.trim();
     var giorno = parseInt(document.getElementById('mGiorno').value) || 1;
@@ -2508,11 +2513,36 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       if (tsFine < tsInizio) { showToast('// DATA FINE PRECEDENTE ALL\'INIZIO', 'error'); return; }
     }
 
-
     var oraFineVal = document.getElementById('mOraFine').value.trim();
     var terminatoVal = document.getElementById('mTerminato').checked;
+
+    // ── Gestione locandina ────────────────────────────────────────────────
+    // Se è stata caricata una nuova immagine (base64 in _b64):
+    //   1. Se in modifica ed esisteva già una locandina Storage → cancellala
+    //   2. Carica il nuovo file su Supabase Storage → salva l'URL
+    // Se è stata cancellata (_locandinaCancellata):
+    //   → cancella il vecchio file da Storage (se era un URL Storage) e salva null
+    // Altrimenti:
+    //   → mantieni la locandina esistente
+    var eventoId = isEdit ? ev.id : getNextId('event');
+    var locandinaFinal = isEdit ? ev.locandina : null;
+
+    if (locandinaFile && locandinaFile._b64) {
+      // Nuova immagine caricata
+      showToast('// CARICAMENTO LOCANDINA...', 'info');
+      // Cancella la vecchia da Storage se esiste
+      if (isEdit && ev.locandina) deleteLocandina(ev.locandina);
+      var uploadedUrl = await uploadLocandina(locandinaFile._b64, eventoId);
+      locandinaFinal = uploadedUrl || locandinaFile._b64; // fallback a base64 se upload fallisce
+    } else if (window._locandinaCancellata) {
+      // Locandina rimossa
+      if (isEdit && ev.locandina) deleteLocandina(ev.locandina);
+      locandinaFinal = null;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     var obj = {
-      id: isEdit ? ev.id : getNextId('event'),
+      id: eventoId,
       nome: nome,
       giorno: giorno, mese: mese, anno: anno,
       giornoFine: giornoFine, meseFine: meseFine, annoFine: annoFine,
@@ -2523,7 +2553,7 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
       desc: document.getElementById('mDesc').value.trim(),
       note: document.getElementById('mNote').value.trim(),
       luogo: document.getElementById('mLuogo').value.trim(),
-      locandina: (locandinaFile && locandinaFile._b64) ? locandinaFile._b64 : (window._locandinaCancellata ? null : (isEdit ? ev.locandina : null)),
+      locandina: locandinaFinal,
       notifica_nuovo: document.getElementById('mNotificaNuovo') ? document.getElementById('mNotificaNuovo').checked : false,
       notifica_reminder: document.getElementById('mNotificaReminder') ? document.getElementById('mNotificaReminder').checked : false,
     };
@@ -2533,10 +2563,8 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
     // Notifiche push
     if (typeof notificaNuovoEvento === 'function') {
       if (!isEdit) {
-        // Evento nuovo: invia sempre se notifica_nuovo è attivo
         notificaNuovoEvento(obj);
       } else if (obj.notifica_nuovo && !ev.notifica_nuovo) {
-        // Evento modificato: invia solo se notifica_nuovo è stato appena abilitato
         notificaNuovoEvento(obj);
       }
     }
