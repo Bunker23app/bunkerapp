@@ -4322,6 +4322,21 @@ document.addEventListener('DOMContentLoaded', function() {
           if (_sessValida && _sess.name && _sess.role) {
             currentUser = { name: _sess.name, role: _sess.role };
             _sessionToRestore = _sess;
+            // ── Navigazione immediata pre-Supabase ───────────────────────────
+            // Mostra subito la schermata corretta usando i dati del localStorage,
+            // senza aspettare la risposta di Supabase (evita il flash splash/login).
+            // Step 6 ri-renderizza tutto dopo che i dati freschi arrivano dal DB.
+            buildAll();
+            if (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.AIUTANTE) {
+              var _staffScreenPre = document.getElementById('screenStaff');
+              if (_staffScreenPre) _staffScreenPre.classList.toggle('is-admin', currentUser.role === ROLES.ADMIN);
+              var _staffNamePre = document.getElementById('staffName');
+              if (_staffNamePre) _staffNamePre.textContent = currentUser.name.toUpperCase();
+              showTab('dashboard');
+              navigate('screenStaff');
+            } else {
+              navigate('screenHome');
+            }
           } else {
             localStorage.removeItem('bunker23_session');
           }
