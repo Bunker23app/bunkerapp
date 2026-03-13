@@ -4297,71 +4297,77 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   } catch(e) {}
 
-  // Ripristina sessione (skip se c'è un invito pendente)
-  try {
-    var savedSession = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
-    if (savedSession) {
-      var sess = JSON.parse(savedSession);
-      var elapsed = Date.now() - (sess.ts || 0);
-      var isPrivileged = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
-      // Admin/Staff: sessione permanente (nessuna scadenza). Altri: 7 giorni di inattività.
-      var sessionValida = isPrivileged || (elapsed < SESSION_TIMEOUT_USER);
-      if (sessionValida) {
-        var member = MEMBERS.find(function(m) { return m.name === sess.name; });
-        if (member) {
-          currentUser = member;
-          localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
-          resetSessionTimer();
-          buildAll();
-          updateHomeAccessLevel();
-          updatePageCfgBtns();
-          if (member.role === ROLES.STAFF || member.role === ROLES.ADMIN || member.role === ROLES.AIUTANTE) {
-            renderAvatar(document.getElementById('staffAvatar'), member);
-            document.getElementById('staffName').textContent = member.name.toUpperCase();
-            document.getElementById('staffRole').textContent = roleLabel(member.role).label;
-            var staffScreen = document.getElementById('screenStaff');
-            staffScreen.classList.toggle('is-admin', member.role === ROLES.ADMIN);
-            applyBenvenuto();
-            applyWidgetConfig();
-            applyTabConfig();
-            showTab('dashboard');
-          }
-          applyPageSections('home');
-          applyPageSections('bacheca');
-          applyPageSections('info');
-          navigate('screenHome');
-          showToast('// BENTORNATO ' + member.name.toUpperCase(), 'ok');
-        } else {
-          localStorage.removeItem('bunker23_session');
-        }
-      } else {
-        localStorage.removeItem('bunker23_session');
-      }
-    }
-  } catch(e) {}
-
   // Carica tutti i dati da Supabase in background
+  // Il ripristino sessione avviene DOPO loadAllData() così MEMBERS è già popolato da DB
   (async function() {
     try {
       _sbReady = true;
       await loadAllData();
+
+      // ── Ripristina sessione (skip se c'è un invito pendente) ──────────────
+      // Eseguito QUI, dopo loadAllData(), così MEMBERS contiene già i dati reali da Supabase.
+      // Se eseguito prima, MEMBERS è vuoto → member non trovato → sessione cancellata.
+      try {
+        var savedSession = _pendingInviteToken ? null : localStorage.getItem('bunker23_session');
+        if (savedSession) {
+          var sess = JSON.parse(savedSession);
+          var elapsed = Date.now() - (sess.ts || 0);
+          var isPrivileged = (sess.role === 'admin' || sess.role === 'staff' || sess.role === 'aiutante');
+          var sessionValida = isPrivileged || (elapsed < SESSION_TIMEOUT_USER);
+          if (sessionValida) {
+            var member = MEMBERS.find(function(m) { return m.name === sess.name; });
+            if (member) {
+              currentUser = member;
+              localStorage.setItem('bunker23_session', JSON.stringify({ name: member.name, role: member.role, ts: Date.now() }));
+              resetSessionTimer();
+              // Ricarica dati con il ruolo corretto (loadAllData sopra girava come guest)
+              await loadAllData();
+            } else {
+              localStorage.removeItem('bunker23_session');
+            }
+          } else {
+            localStorage.removeItem('bunker23_session');
+          }
+        }
+      } catch(e) {}
+      // ─────────────────────────────────────────────────────────────────────
+
       // Carica cronologia utenti in bulk per ricerca/filtri avanzati (solo staff/admin)
       if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) {
         if (typeof historyLoadAll === 'function') {
           MEMBERS_HISTORY = await historyLoadAll();
         }
       }
-      // [cleanup duplicati spesa rimosso: problema risolto a DB, funzione legacy eliminata]
-      // Sincronizza spesa col magazzino (una sola volta al caricamento) e salva
-      syncMagazzinoWithSpesa();
-      saveSpesa();
+
+      // Sincronizza spesa col magazzino solo se l'utente ha accesso alla spesa
+      // (evita di sovrascrivere dati reali su Supabase quando si è guest o Lv1/Lv2)
+      var _canAccessSpesa = currentUser &&
+        (currentUser.role === 'admin' || currentUser.role === 'staff' ||
+         (currentUser.role === 'aiutante' && AIUTANTE_CONFIG.spesa));
+      if (_canAccessSpesa) {
+        syncMagazzinoWithSpesa();
+        saveSpesa();
+      }
+
       buildAll();
       if (currentUser) {
         // Aggiorna riferimento currentUser con dati freschi da DB
         var updated = MEMBERS.find(function(m){ return m.name === currentUser.name; });
         if (updated) currentUser = updated;
-        applyWidgetConfig();
-        applyTabConfig();
+        updatePageCfgBtns();
+        if (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.AIUTANTE) {
+          renderAvatar(document.getElementById('staffAvatar'), currentUser);
+          document.getElementById('staffName').textContent = currentUser.name.toUpperCase();
+          document.getElementById('staffRole').textContent = roleLabel(currentUser.role).label;
+          var staffScreen = document.getElementById('screenStaff');
+          staffScreen.classList.toggle('is-admin', currentUser.role === ROLES.ADMIN);
+          applyBenvenuto();
+          applyWidgetConfig();
+          applyTabConfig();
+          showTab('dashboard');
+        }
+        navigate('screenHome');
+        showToast('// BENTORNATO ' + currentUser.name.toUpperCase(), 'ok');
       }
       // Applica subito la config delle sezioni appena i dati Supabase sono pronti
       applyPageSections('home');
@@ -4370,7 +4376,6 @@ document.addEventListener('DOMContentLoaded', function() {
       updateHomeAccessLevel();
       // Avvia realtime (staff/admin) o polling (altri ruoli/guest) DOPO che i dati
       // sono stati caricati dal DB e currentUser è aggiornato con il ruolo reale.
-      // onUserLogin() gestisce automaticamente entrambi i casi.
       if (typeof onUserLogin === 'function') {
         onUserLogin();
       }
@@ -4385,7 +4390,6 @@ document.addEventListener('DOMContentLoaded', function() {
         checkInviteToken();
       }
       // Se c'è un evento pendente da notifica push e l'utente è già loggato, naviga subito.
-      // Se non è loggato, _pendingEventoId rimane valorizzato e verrà usato in doLogin().
       if (_pendingEventoId && currentUser) {
         navigaAdEvento(_pendingEventoId);
       }
