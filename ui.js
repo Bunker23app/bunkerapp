@@ -484,6 +484,12 @@ async function doLogin() {
     }
   }
   if (!member) { err.textContent = '// NOME UTENTE NON TROVATO'; return; }
+  // Fetch password_hash direttamente da DB (al login currentUser è null → MEMBERS non ha password_hash)
+  try {
+    var res = await getSupabase().from('members').select('password_hash').eq('name', member.name).single();
+    if (res.error || !res.data) { err.textContent = '// ERRORE DI CONNESSIONE'; return; }
+    member.password = res.data.password_hash;
+  } catch(e) { err.textContent = '// ERRORE DI CONNESSIONE'; return; }
   // Verifica la password
   if (!(await pwMatch(pw, member.password))) { err.textContent = '// PASSWORD ERRATA'; return; }
   if (member.sospeso) { err.textContent = '// ACCOUNT SOSPESO · CONTATTARE UN AMMINISTRATORE'; return; }
