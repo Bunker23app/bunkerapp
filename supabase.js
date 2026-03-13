@@ -7,6 +7,8 @@ var _sb = null;
 var _sbReady = false;
 // Timer per debounce salvataggi non-realtime
 var _saveTimers = {};
+// Configurazione sezioni DB caricate per gli aiutanti (letta da appconfig.AIUTANTE_SECTIONS)
+var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false, chat:true };
 
 function getSupabase() {
   if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -79,6 +81,7 @@ function saveConfig() {
       INFO: INFO,
       _nextIds: _nextIds,
       NOTIFICHE_CONFIG: NOTIFICHE_CONFIG,
+      AIUTANTE_SECTIONS: AIUTANTE_CONFIG,
       // Articoli magazzino aggiunti dinamicamente (id >= 23)
       MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
     };
@@ -516,7 +519,59 @@ async function clearLogRemote() {
   try { await getSupabase().from('log').delete().gt('id', 0); } catch(e) {}
 }
 
-// ── LOAD FUNCTIONS ───────────────────────
+// Ricarica le tabelle staff/aiutante dopo un cambio ruolo in sessione (senza reload pagina)
+async function reloadStaffData() {
+  if (!_sbReady) return;
+  var sb = getSupabase();
+  var _role = currentUser ? currentUser.role : '';
+  var _isAiut = (_role === 'aiutante');
+  var _loadSpesa     = !_isAiut || AIUTANTE_CONFIG.spesa;
+  var _loadLavori    = !_isAiut || AIUTANTE_CONFIG.lavori;
+  var _loadMagazzino = !_isAiut || AIUTANTE_CONFIG.magazzino;
+  var _loadPagamenti = !_isAiut || AIUTANTE_CONFIG.pagamenti;
+  var _loadChat      = !_isAiut || AIUTANTE_CONFIG.chat;
+  var _empty = Promise.resolve({ data: [], error: null });
+
+  try {
+    var res = await Promise.all([
+      _loadSpesa     ? sb.from('spesa').select('*')                                      : _empty,
+      _loadLavori    ? sb.from('lavori').select('*')                                     : _empty,
+      _loadMagazzino ? sb.from('magazzino').select('*')                                  : _empty,
+      _loadPagamenti ? sb.from('pagamenti').select('*')                                  : _empty,
+      _loadChat      ? sb.from('chat').select('*').order('ts',{ascending:true}).limit(200) : _empty,
+    ]);
+    if (_loadSpesa && res[0].data) {
+      SPESA = res[0].data.map(function(s) {
+        var obj = { id:s.id, nome:s.item, done:s.done||false, qty:s.qty||'', costoUnitario:s.costo_unitario||0, unita:s.unita||'', fromMagazzino:s.from_magazzino||false, magazzinoId:s.magazzino_id||null, qtyNum:0, _categoria:null };
+        if (obj.qty) { var p = parseFloat(obj.qty); if (!isNaN(p)) obj.qtyNum = p; }
+        if (obj.fromMagazzino && obj.magazzinoId) { var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; }); if (mz) { obj._categoria=mz.categoria; obj.costoUnitario=mz.costoUnitario; obj.unita=mz.unita; } }
+        return obj;
+      });
+    }
+    if (_loadLavori && res[1].data) {
+      LAVORI = res[1].data.map(function(l) { return { id:l.id, lavoro:l.lavoro, who:l.who||'-', done:l.done||false }; });
+    }
+    if (_loadMagazzino && res[2].data) {
+      res[2].data.forEach(function(row) { var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; }); if (item) item.attuale = row.attuale; });
+    }
+    if (_loadPagamenti && res[3].data) {
+      res[3].data.forEach(function(row) {
+        var existing = PAGAMENTI.find(function(p){ return p.name === row.member_name; });
+        var mov = []; try { mov = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
+        if (existing) { existing.saldo = row.saldo||0; existing.movimenti = mov; }
+        else PAGAMENTI.push({ name:row.member_name, saldo:row.saldo||0, movimenti:mov });
+      });
+    }
+    if (_loadChat && res[4].data) {
+      CHAT = res[4].data.map(function(c) {
+        var d = new Date(c.ts);
+        var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})+' · '+d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+        return { id:c.id, who:c.author, testo:c.text, ora:ora, ts:d.getTime() };
+      });
+    }
+    console.log('[reloadStaffData] completato per ruolo: ' + _role);
+  } catch(e) { console.warn('[reloadStaffData]', e.message); }
+}
 
 function _applyConfig(cfg) {
   if (!cfg) return;
@@ -609,6 +664,8 @@ function _applyConfig(cfg) {
   }
   // Notifiche push
   if (cfg.NOTIFICHE_CONFIG) Object.assign(NOTIFICHE_CONFIG, cfg.NOTIFICHE_CONFIG);
+  // Sezioni DB accessibili agli aiutanti
+  if (cfg.AIUTANTE_SECTIONS) Object.assign(AIUTANTE_CONFIG, cfg.AIUTANTE_SECTIONS);
 }
 
 async function loadAllData() {
@@ -645,18 +702,32 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load members]', e.message); }
 
-  // ── BATCH 2 (parallelo): tutte le altre tabelle ───────────────────────────
+  // ── BATCH 2 (parallelo): tabelle in base al ruolo ────────────────────────
+  // Lv1 (utente) e Lv2 (premium): nessuna tabella staff né chat
+  // Lv3 (aiutante): solo le sezioni abilitate in AIUTANTE_CONFIG
+  // Lv4+ (staff/admin): tutto
+  var _role2 = currentUser ? currentUser.role : '';
+  var _isLv12 = (_role2 === 'utente' || _role2 === 'premium' || _role2 === '');
+  var _isAiut = (_role2 === 'aiutante');
+
+  var _loadSpesa     = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.spesa);
+  var _loadLavori    = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.lavori);
+  var _loadMagazzino = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.magazzino);
+  var _loadPagamenti = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.pagamenti);
+  var _loadChat      = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
+
+  var _empty = Promise.resolve({ data: [], error: null });
   var batch2 = await Promise.all([
-    sb.from('calendario').select('*').order('data', { ascending: true }),   // 0
-    sb.from('spesa').select('*'),                                            // 1
-    sb.from('lavori').select('*'),                                           // 2
-    sb.from('magazzino').select('*'),                                        // 3
-    sb.from('pagamenti').select('*'),                                        // 4
-    sb.from('chat').select('*').order('ts', { ascending: true }).limit(200), // 5
-    sb.from('log').select('*').order('ts', { ascending: false }).limit(500), // 6
-    sb.from('suggerimenti').select('*').order('ts', { ascending: false }),   // 7
-    sb.from('valutazioni').select('*').order('ts', { ascending: false }),    // 8
-    sb.from('contatori').select('*'),                                        // 9
+    sb.from('calendario').select('*').order('data', { ascending: true }),                                  // 0 — sempre
+    _loadSpesa     ? sb.from('spesa').select('*')                                       : _empty,          // 1
+    _loadLavori    ? sb.from('lavori').select('*')                                      : _empty,          // 2
+    _loadMagazzino ? sb.from('magazzino').select('*')                                   : _empty,          // 3
+    _loadPagamenti ? sb.from('pagamenti').select('*')                                   : _empty,          // 4
+    _loadChat      ? sb.from('chat').select('*').order('ts', { ascending: true }).limit(200) : _empty,    // 5
+    sb.from('log').select('*').order('ts', { ascending: false }).limit(500),                               // 6 — sempre
+    sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 7 — sempre
+    sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                  // 8 — sempre
+    sb.from('contatori').select('*'),                                                                      // 9 — sempre
   ]);
 
   // 3. CALENDARIO

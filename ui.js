@@ -3674,6 +3674,26 @@ function openPromoteModal(i) {
     buildMembriList();
     closeModal();
     showToast('// LIVELLO AGGIORNATO ✓', 'success');
+    // Se il membro modificato è l'utente corrente → ricarica dati e UI per il nuovo ruolo
+    if (currentUser && currentUser.name === m.name) {
+      currentUser.role = nuovoRuolo;
+      try {
+        var _sess = JSON.parse(localStorage.getItem('bunker23_session') || '{}');
+        _sess.role = nuovoRuolo;
+        localStorage.setItem('bunker23_session', JSON.stringify(_sess));
+      } catch(e) {}
+      if (typeof reloadStaffData === 'function') {
+        reloadStaffData().then(function() {
+          buildAll();
+          if (typeof applyWidgetConfig === 'function') applyWidgetConfig();
+          if (typeof applyTabConfig === 'function') applyTabConfig();
+          if (typeof onUserLogin === 'function') onUserLogin();
+          showToast('// RUOLO AGGIORNATO · DATI RICARICATI ✓', 'success');
+        });
+      } else {
+        buildAll();
+      }
+    }
   };
   openModal();
 }
@@ -4130,6 +4150,38 @@ function buildConsigliati() {
 }
 
 /** Ricostruisce tutta la UI */
+// Nasconde/mostra widget e tab staff in base al ruolo dell'utente corrente
+// Lv1/Lv2: nasconde chat e tutte le tabelle staff (spesa, lavori, magazzino, pagamenti)
+// Lv3 (aiutante): rispetta AIUTANTE_CONFIG per ogni sezione
+// Lv4+: nessuna restrizione aggiuntiva
+function _applyRoleVisibility() {
+  if (!currentUser) return;
+  var role = currentUser.role;
+  var isLv12 = (role === 'utente' || role === 'premium');
+  var isAiut = (role === 'aiutante');
+  var staffSections = ['spesa','lavori','magazzino','pagamenti'];
+
+  function _setSection(id, visible) {
+    // Tab
+    var tabEl = document.getElementById('tab-' + id);
+    if (tabEl) tabEl.dataset.cfgDisabled = visible ? '' : '1';
+    // Widget dashboard
+    var wEl = document.querySelector('#tab-dashboard .dash-widget[onclick*="showTab(\'' + id + '\')"]');
+    if (wEl && !wEl.classList.contains('admin-only')) wEl.style.display = visible ? '' : 'none';
+  }
+
+  if (isLv12) {
+    // Chat completamente nascosta
+    _setSection('chat', false);
+    // Tutte le tabelle staff nascoste
+    staffSections.forEach(function(id) { _setSection(id, false); });
+  } else if (isAiut && typeof AIUTANTE_CONFIG !== 'undefined') {
+    _setSection('chat', !!AIUTANTE_CONFIG.chat);
+    staffSections.forEach(function(id) { _setSection(id, !!AIUTANTE_CONFIG[id]); });
+  }
+  // Staff/admin: nessuna modifica — applyWidgetConfig e applyTabConfig gestiscono già tutto
+}
+
 function buildAll() {
   // Non resettiamo _unreadChat qui: viene gestito da showTab('chat') e da sendChat()
   buildHomeNextEvent();
@@ -4155,6 +4207,7 @@ function buildAll() {
   updateStaffNavBtns();
   applyGuestMessage();
   buildChat();
+  _applyRoleVisibility();
 }
 
 // ════════════════════════════════════════

@@ -106,6 +106,13 @@ var AIUTANTE_TAB_CONFIG = [
   { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
 ];
 
+// Configurazione sezioni DB caricate per gli aiutanti
+// Sovrascritta da supabase.js al caricamento (appconfig.AIUTANTE_SECTIONS)
+// Dichiarata qui come fallback; il valore reale viene da AIUTANTE_CONFIG in supabase.js
+if (typeof AIUTANTE_CONFIG === 'undefined') {
+  var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false, chat:true };
+}
+
 var _cfgDragSrc = null;
 
 function buildConfigura() {
@@ -201,6 +208,31 @@ function buildConfigura() {
         '<label class="cfg-toggle"><input type="checkbox"' + (w.enabled ? ' checked' : '') +
         ' onchange="syncAiutanteEnabled(\'' + w.id + '\',this.checked);saveConfig()"><span class="cfg-toggle-slider"></span></label>';
       awList.appendChild(row);
+    });
+  }
+
+  // ── Aiutante: sezioni DB (quali tabelle vengono caricate da Supabase) ──
+  var aSecList = document.getElementById('cfgAiutanteSecList');
+  if (aSecList) {
+    var _aiutanteSecs = [
+      { id:'spesa',     icon:'🛒', label:'SPESA',      desc:'tabella spesa' },
+      { id:'lavori',    icon:'✓',  label:'LAVORI',     desc:'tabella lavori' },
+      { id:'magazzino', icon:'📦', label:'MAGAZZINO',  desc:'tabella magazzino' },
+      { id:'pagamenti', icon:'💳', label:'PAGAMENTI',  desc:'tabella pagamenti' },
+      { id:'chat',      icon:'💬', label:'CHAT',       desc:'tabella chat' },
+    ];
+    aSecList.innerHTML = '';
+    _aiutanteSecs.forEach(function(sec) {
+      var row = document.createElement('div');
+      row.className = 'cfg-toggle-row';
+      row.innerHTML =
+        '<div>' +
+          '<div class="cfg-toggle-label">' + sec.icon + ' ' + sec.label + '</div>' +
+          '<div style="font-family:var(--mono);font-size:7px;color:#555;letter-spacing:1px;margin-top:2px">carica ' + sec.desc + ' da Supabase</div>' +
+        '</div>' +
+        '<label class="cfg-toggle"><input type="checkbox"' + (AIUTANTE_CONFIG[sec.id] ? ' checked' : '') +
+        ' onchange="AIUTANTE_CONFIG[\'' + sec.id + '\']=this.checked;salvaAiutanteSections()"><span class="cfg-toggle-slider"></span></label>';
+      aSecList.appendChild(row);
     });
   }
 
@@ -307,6 +339,13 @@ function salvaConfiguraAiutante() {
   saveConfig();
   showToast('// VISTA AIUTANTE SALVATA ✓', 'success');
   addLog('ha aggiornato la configurazione aiutante');
+}
+
+// Salva la configurazione sezioni DB aiutante in appconfig
+function salvaAiutanteSections() {
+  if (!isAdmin()) return;
+  saveConfig(); // AIUTANTE_SECTIONS è incluso nel blob config da supabase.js
+  showToast('// SEZIONI AIUTANTE SALVATE ✓', 'success');
 }
 
 function applyAiutanteConfig() {
