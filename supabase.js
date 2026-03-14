@@ -99,16 +99,20 @@ function saveMembers() {
     if (!_sbReady) return;
     try {
       var rows = MEMBERS.map(function(m) {
-        return {
+        var row = {
           name: m.name,
           initial: m.initial || m.name.charAt(0).toUpperCase(),
           color: m.color || '#444',
-          password_hash: m.password || '',
           role: m.role || 'utente',
           foto_url: m.photo || null,
           sospeso: m.sospeso || false,
           can_create_profiles: m.canCreateProfiles || false,
         };
+        // Includi password_hash SOLO se presente in memoria — evita di
+        // sovrascrivere con stringa vuota quando i membri sono stati caricati
+        // senza password_hash (es. ruolo guest/Lv1 che usa select ridotto)
+        if (m.password) row.password_hash = m.password;
+        return row;
       });
       // Upsert uno alla volta per rispettare unique su name
       // Se il membro ha _oldName (nome cambiato) → UPDATE WHERE name=oldName
