@@ -828,16 +828,15 @@ async function loadAllData() {
   try {
     var mRes = batch1[1];
     if (mRes.data && mRes.data.length) {
-      mRes.data.forEach(function(dm) {
-        var existing = MEMBERS.find(function(m){ return m.name === dm.name; });
-        var mapped = {
+      MEMBERS = mRes.data.map(function(dm) {
+        return {
           name: dm.name, initial: dm.initial, color: dm.color,
           password: dm.password_hash, role: dm.role,
           photo: dm.foto_url || null, sospeso: dm.sospeso || false,
           canCreateProfiles: dm.can_create_profiles || false,
+          canPromote: dm.can_promote || false,
+          created_at: dm.created_at || null,
         };
-        if (existing) Object.assign(existing, mapped);
-        else MEMBERS.push(mapped);
       });
     }
   } catch(e) { console.warn('[load members]', e.message); }
