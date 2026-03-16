@@ -1506,6 +1506,9 @@ function onUserLogin() {
     stopPolling();
     initRealtime();
     _startCacheTimer();
+    // Garantisce che _realtimeReady sia true anche quando onUserLogin
+    // viene chiamato da doLogin (che non passa per loadAllData)
+    _realtimeReady = true;
   } else {
     stopRealtime();
     _stopCacheTimer();
