@@ -753,18 +753,15 @@ function _restorePublicCache() {
       }
       if (Array.isArray(payload.CHAT)      && payload.CHAT.length)      CHAT      = payload.CHAT;
       if (Array.isArray(payload.LOG)       && payload.LOG.length)        LOG       = payload.LOG;
-      // MAGAZZINO: merge per item_id (mantiene struttura hardcodata, aggiorna solo attuale)
+      // MAGAZZINO: aggiorna quantità hardcodati, replace completo custom (id>=23) per evitare duplicati
       if (Array.isArray(payload.MAGAZZINO) && payload.MAGAZZINO.length) {
         payload.MAGAZZINO.forEach(function(cm) {
           var existing = MAGAZZINO.find(function(m){ return m.id === cm.id; });
-          if (existing) {
-            existing.attuale = cm.attuale;
-          }
-          // articoli custom (id >= 23) non in MAGAZZINO hardcodato: aggiungi
-          else if (cm.id >= 23) {
-            MAGAZZINO.push(cm);
-          }
+          if (existing) existing.attuale = cm.attuale;
         });
+        var customFromCache = payload.MAGAZZINO.filter(function(cm){ return cm.id >= 23; });
+        MAGAZZINO = MAGAZZINO.filter(function(m){ return m.id < 23; });
+        customFromCache.forEach(function(cm){ MAGAZZINO.push(cm); });
       }
     }
 
