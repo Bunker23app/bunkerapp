@@ -649,7 +649,7 @@ function _applyConfig(cfg) {
 // NON cachati: password, chat, spesa, lavori, magazzino, pagamenti, log
 // ════════════════════════════════════════════════════════
 
-var _CACHE_KEY = 'bunker23_cache_v2';
+var _CACHE_KEY = 'bunker23_cache_v3';
 
 function _savePublicCache() {
   var role = currentUser && currentUser.role ? currentUser.role : '';
