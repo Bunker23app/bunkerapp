@@ -15,6 +15,7 @@ var _saveTimers = {};
 // Impedisce che gli eventi iniziali mandati da Supabase all'attivazione dei canali
 // (prima che i dati siano in memoria) causino duplicati negli array locali.
 var _realtimeReady = false;
+var _cacheLoadingInProgress = false; // true durante loadAllData — blocca salvataggio cache con dati parziali
 // Configurazione sezioni DB caricate per gli aiutanti (letta da appconfig.AIUTANTE_SECTIONS)
 var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false, chat:true };
 
@@ -652,6 +653,7 @@ function _applyConfig(cfg) {
 var _CACHE_KEY = 'bunker23_cache_v3';
 
 function _savePublicCache() {
+  if (_cacheLoadingInProgress) return; // non salvare durante loadAllData
   var role = currentUser && currentUser.role ? currentUser.role : '';
   var _isStaffAdmin = (role === 'admin' || role === 'staff');
   var _isAiut       = (role === 'aiutante');
@@ -775,6 +777,7 @@ function _restorePublicCache() {
 
 async function loadAllData() {
   _realtimeReady = false;
+  _cacheLoadingInProgress = true; // blocca salvataggio cache durante il caricamento
   var sb = getSupabase();
 
   // ── CACHE: ripristino immediato per tutti i ruoli ───────────────────────────
@@ -1015,7 +1018,8 @@ async function loadAllData() {
   } catch(e) { console.warn('[load valutazioni]', e.message); }
 
 
-  // ── CACHE: salva dati freschi da Supabase (solo per guest/Lv1/Lv2) ────────
+  // ── CACHE: salva dati freschi da Supabase ────────
+  _cacheLoadingInProgress = false; // sblocca salvataggio cache
   _savePublicCache();
 
   // Realtime pronto: da qui in poi gli eventi dei canali sono vere modifiche future
