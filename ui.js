@@ -1,7 +1,7 @@
 // ════════════════════════════════════════
 // DATA
 // ════════════════════════════════════════
-const MEMBERS = [
+let MEMBERS = [
   { name:'Chiaro', initial:'C', color:'#cc2200', password:'sha256:bbb0c9661d4500af1a2ad1f82cbea006119b727d177e51cca3a2b23eaef51927', role:'admin' },
   { name:'Lukas',  initial:'L', color:'#1a6b3c', password:'sha256:2b2ff63949b46caaa980c971484ba099aea045a4cbe887bccf4faff00924484a', role:'staff' },
   { name:'Adal',   initial:'A', color:'#1a3a7a', password:'sha256:ee431cdcdf25341aafd8d67c35e6284ac7d5d7cb6c7cc0ac54a00f0440ab462d', role:'staff' },
