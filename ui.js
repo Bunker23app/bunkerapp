@@ -5010,6 +5010,7 @@ async function doRegistrazione() {
     // Aggiungi a MEMBERS locale e fai login automatico
     MEMBERS.push(nuovoMembro);
     currentUser = nuovoMembro;
+    var _invBy = _inviteTokenAttivo ? _inviteTokenAttivo.creato_da : null;
     _inviteTokenAttivo = null;
 
     try { localStorage.setItem('bunker23_session', JSON.stringify({ name: nome, role: 'utente', ts: Date.now() })); } catch(e) {}
@@ -5017,7 +5018,6 @@ async function doRegistrazione() {
     guestMode = false;
     addLog('si è registrato tramite invito');
     // Cronologia: registrazione via QR
-    var _invBy = (_inviteTokenAttivo && _inviteTokenAttivo.creato_da) ? _inviteTokenAttivo.creato_da : null;
     if (typeof historyCreateMember === 'function') historyCreateMember(nome, 'qr', _invBy);
     buildAll();
     updateHomeAccessLevel();
