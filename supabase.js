@@ -659,8 +659,148 @@ function _applyConfig(cfg) {
   if (cfg.AIUTANTE_SECTIONS) Object.assign(AIUTANTE_CONFIG, cfg.AIUTANTE_SECTIONS);
 }
 
+// ════════════════════════════════════════════════════════
+// CACHE LOCALSTORAGE — guest / Lv1 / Lv2
+// Chiave: bunker23_cache_v1 (aggiornare versione ad ogni cambio struttura dati)
+// Campi cachati: EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
+// NON cachati: password, chat, spesa, lavori, magazzino, pagamenti, log
+// ════════════════════════════════════════════════════════
+
+var _CACHE_KEY = 'bunker23_cache_v1';
+
+function _savePublicCache() {
+  var role = currentUser && currentUser.role ? currentUser.role : '';
+  var _isStaffAdmin = (role === 'admin' || role === 'staff');
+  var _isAiut       = (role === 'aiutante');
+  var _isPublic     = (role === '' || role === 'utente' || role === 'premium');
+  // Cache attiva per tutti i ruoli
+  try {
+    var payload = {
+      ts:   Date.now(),
+      role: role, // salvato per sapere quali campi aspettarsi al restore
+      // ── Dati pubblici (tutti i ruoli) ────────────────────────────────────
+      EVENTI:       EVENTI,
+      BACHECA:      BACHECA,
+      INFO:         INFO,
+      CONSIGLIATI:  CONSIGLIATI,
+      SUGGERIMENTI: SUGGERIMENTI,
+      VALUTAZIONI:  VALUTAZIONI,
+    };
+
+    if (_isPublic) {
+      // guest/utente/premium: MEMBERS ridotto (no password, no can_create_profiles)
+      payload.MEMBERS = MEMBERS.map(function(m) {
+        return { name: m.name, initial: m.initial, color: m.color, role: m.role, photo: m.photo, sospeso: m.sospeso };
+      });
+    } else {
+      // aiutante/staff/admin: MEMBERS completo
+      payload.MEMBERS = MEMBERS;
+    }
+
+    if (_isStaffAdmin) {
+      // Staff e admin: cache completa di tutte le tabelle
+      payload.SPESA     = SPESA;
+      payload.LAVORI    = LAVORI;
+      payload.MAGAZZINO = MAGAZZINO;
+      payload.PAGAMENTI = PAGAMENTI;
+      payload.CHAT      = CHAT;
+      payload.LOG       = LOG;
+    } else if (_isAiut) {
+      // Aiutante: solo le sezioni abilitate in AIUTANTE_CONFIG
+      if (AIUTANTE_CONFIG.spesa)     payload.SPESA     = SPESA;
+      if (AIUTANTE_CONFIG.lavori)    payload.LAVORI    = LAVORI;
+      if (AIUTANTE_CONFIG.magazzino) payload.MAGAZZINO = MAGAZZINO;
+      if (AIUTANTE_CONFIG.pagamenti) payload.PAGAMENTI = PAGAMENTI;
+      if (AIUTANTE_CONFIG.chat)      payload.CHAT      = CHAT;
+    }
+
+    localStorage.setItem(_CACHE_KEY, JSON.stringify(payload));
+    console.log('[cache] salvata · ruolo=' + (role || 'guest') + ' · ' + EVENTI.length + ' eventi, ' + MEMBERS.length + ' membri');
+  } catch(e) {
+    // Quota exceeded o browser privato: ignora silenziosamente
+    console.warn('[cache] salvataggio fallito:', e.message);
+  }
+}
+
+function _restorePublicCache() {
+  try {
+    var raw = localStorage.getItem(_CACHE_KEY);
+    if (!raw) return false;
+    var payload = JSON.parse(raw);
+    if (!payload || typeof payload !== 'object') return false;
+
+    var cachedRole = payload.role || '';
+    var _wasStaffAdmin = (cachedRole === 'admin' || cachedRole === 'staff');
+    var _wasAiut       = (cachedRole === 'aiutante');
+
+    // ── Dati pubblici (tutti i ruoli) ────────────────────────────────────
+    if (Array.isArray(payload.EVENTI) && payload.EVENTI.length)  EVENTI       = payload.EVENTI;
+    if (Array.isArray(payload.BACHECA))                           BACHECA      = payload.BACHECA;
+    if (payload.INFO && typeof payload.INFO === 'object')         INFO         = payload.INFO;
+    if (Array.isArray(payload.CONSIGLIATI))                       CONSIGLIATI  = payload.CONSIGLIATI;
+    if (Array.isArray(payload.SUGGERIMENTI))                      SUGGERIMENTI = payload.SUGGERIMENTI;
+    if (Array.isArray(payload.VALUTAZIONI))                       VALUTAZIONI  = payload.VALUTAZIONI;
+
+    // ── MEMBERS ──────────────────────────────────────────────────────────
+    if (Array.isArray(payload.MEMBERS) && payload.MEMBERS.length) {
+      if (_wasStaffAdmin || _wasAiut) {
+        // Cache completa: sostituisci direttamente
+        MEMBERS = payload.MEMBERS;
+      } else {
+        // Cache pubblica ridotta: merge per evitare duplicati
+        payload.MEMBERS.forEach(function(cm) {
+          var existing = MEMBERS.find(function(m){ return m.name === cm.name; });
+          if (existing) {
+            existing.initial = cm.initial; existing.color = cm.color;
+            existing.role = cm.role; existing.photo = cm.photo; existing.sospeso = cm.sospeso;
+          } else {
+            MEMBERS.push(cm);
+          }
+        });
+      }
+    }
+
+    // ── Dati staff/admin ─────────────────────────────────────────────────
+    if (_wasStaffAdmin || _wasAiut) {
+      if (Array.isArray(payload.SPESA)     && payload.SPESA.length)     SPESA     = payload.SPESA;
+      if (Array.isArray(payload.LAVORI)    && payload.LAVORI.length)    LAVORI    = payload.LAVORI;
+      if (Array.isArray(payload.PAGAMENTI) && payload.PAGAMENTI.length) {
+        // PAGAMENTI ha struttura {name, saldo, movimenti} — assegna direttamente
+        PAGAMENTI = payload.PAGAMENTI;
+      }
+      if (Array.isArray(payload.CHAT)      && payload.CHAT.length)      CHAT      = payload.CHAT;
+      if (Array.isArray(payload.LOG)       && payload.LOG.length)        LOG       = payload.LOG;
+      // MAGAZZINO: merge per item_id (mantiene struttura hardcodata, aggiorna solo attuale)
+      if (Array.isArray(payload.MAGAZZINO) && payload.MAGAZZINO.length) {
+        payload.MAGAZZINO.forEach(function(cm) {
+          var existing = MAGAZZINO.find(function(m){ return m.id === cm.id; });
+          if (existing) {
+            existing.attuale = cm.attuale;
+          }
+          // articoli custom (id >= 23) non in MAGAZZINO hardcodato: aggiungi
+          else if (cm.id >= 23) {
+            MAGAZZINO.push(cm);
+          }
+        });
+      }
+    }
+
+    console.log('[cache] ripristinata · ruolo=' + (cachedRole || 'guest') + ' · ts=' + new Date(payload.ts).toLocaleTimeString('it-IT'));
+    return true;
+  } catch(e) {
+    console.warn('[cache] ripristino fallito:', e.message);
+    return false;
+  }
+}
+
 async function loadAllData() {
   var sb = getSupabase();
+
+  // ── CACHE: ripristino immediato per tutti i ruoli ───────────────────────────
+  // Se la cache esiste, mostra subito i dati dell'ultima sessione mentre
+  // Supabase carica in background (realtime o polling aggiorneranno in tempo reale).
+  var _cacheRestored = _restorePublicCache();
+  if (_cacheRestored && typeof buildAll === 'function') buildAll(); // UI immediata con dati cached
 
   // ── BATCH 1 (parallelo): config + members ─────────────────────────────────
   // members deve essere disponibile prima del LOG (batch 2) che lo referenzia.
@@ -911,11 +1051,14 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load contatori]', e.message); }
 
+  // ── CACHE: salva dati freschi da Supabase (solo per guest/Lv1/Lv2) ────────
+  _savePublicCache();
+
   // Migrazione da appstate: non più necessaria, gestita via SQL fix_primary_keys.sql
 }
 
 // ── REALTIME ─────────────────────────────
-// Il realtime è attivato SOLO per utenti con ruolo admin o staff.
+// Il realtime è attivato per utenti con ruolo admin, staff e aiutante.
 // Per tutti gli altri ruoli si usa il polling (vedi initPolling).
 
 var _chatChannel      = null;
@@ -956,9 +1099,9 @@ function stopRealtime() {
 }
 
 function initRealtime() {
-  // Controllo ruolo: solo admin e staff possono usare il realtime
+  // Controllo ruolo: admin, staff e aiutante usano il realtime
   var role = currentUser && currentUser.role ? currentUser.role : '';
-  if (role !== 'admin' && role !== 'staff') {
+  if (role !== 'admin' && role !== 'staff' && role !== 'aiutante') {
     console.log('[realtime] disabilitato per ruolo: ' + (role || 'guest') + ' — avvio polling');
     initPolling();
     return;
@@ -1338,8 +1481,8 @@ function initRealtime() {
         currentUser.sospeso = dm.sospeso || false;
         // Se il ruolo è cambiato → switch realtime ↔ polling + ricarica dati
         if (oldRole !== dm.role) {
-          var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
-          var isNowStaff = (dm.role === 'admin' || dm.role === 'staff');
+          var wasStaff = (oldRole === 'admin' || oldRole === 'staff' || oldRole === 'aiutante');
+          var isNowStaff = (dm.role === 'admin' || dm.role === 'staff' || dm.role === 'aiutante');
           if (wasStaff !== isNowStaff) {
             console.log('[realtime] cambio ruolo rilevato (' + oldRole + ' → ' + dm.role + ') · riavvio connessione');
             if (isNowStaff) {
@@ -1374,7 +1517,7 @@ function initRealtime() {
 function onUserLogin() {
   var role = currentUser && currentUser.role ? currentUser.role : '';
   console.log('[auth] onUserLogin · ruolo: ' + (role || 'guest'));
-  if (role === 'admin' || role === 'staff') {
+  if (role === 'admin' || role === 'staff' || role === 'aiutante') {
     stopPolling();
     initRealtime();
   } else {
@@ -1418,14 +1561,14 @@ function _forceLogout(motivo) {
 function initPolling() {
   if (_pollingActive) return; // già attivo
   var role = currentUser && currentUser.role ? currentUser.role : '';
-  // Polling solo per utenti non-staff (guest, utente, premium, aiutante)
-  var isStaffRole = (role === 'admin' || role === 'staff');
+  // Polling solo per utenti Lv1/Lv2 e guest; aiutante usa realtime come staff
+  var isStaffRole = (role === 'admin' || role === 'staff' || role === 'aiutante');
   if (!isStaffRole) {
     _pollingActive = true;
     console.log('Polling background attivo ogni 3 min (ruolo: ' + (role || 'guest') + ')');
     _pollingTimer = setInterval(function() { _pollPublicData(); }, POLLING_INTERVAL);
   } else {
-    // Staff/admin usano realtime ma il controllo account va fatto comunque
+    // Staff/admin/aiutante usano realtime ma il controllo account va fatto comunque
     _pollingActive = true;
     _pollingTimer = setInterval(function() { _checkAccountStatus(); }, POLLING_INTERVAL);
     console.log('Account-check attivo ogni 3 min (ruolo: ' + role + ')');
@@ -1451,8 +1594,8 @@ async function _checkAccountStatus() {
       // Ruolo cambiato → aggiorna e switch connessione
       var oldRole = currentUser.role;
       currentUser.role = res.data.role;
-      var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
-      var isNowStaff = (res.data.role === 'admin' || res.data.role === 'staff');
+      var wasStaff = (oldRole === 'admin' || oldRole === 'staff' || oldRole === 'aiutante');
+      var isNowStaff = (res.data.role === 'admin' || res.data.role === 'staff' || res.data.role === 'aiutante');
       console.log('[account-check] cambio ruolo: ' + oldRole + ' → ' + res.data.role);
       if (wasStaff !== isNowStaff) {
         if (isNowStaff) { stopPolling(); initRealtime(); }
@@ -1486,8 +1629,8 @@ async function _pollPublicData() {
         if (accountCheck.data.role && accountCheck.data.role !== currentUser.role) {
           var oldRole = currentUser.role;
           currentUser.role = accountCheck.data.role;
-          var wasStaff = (oldRole === 'admin' || oldRole === 'staff');
-          var isNowStaff = (accountCheck.data.role === 'admin' || accountCheck.data.role === 'staff');
+          var wasStaff = (oldRole === 'admin' || oldRole === 'staff' || oldRole === 'aiutante');
+          var isNowStaff = (accountCheck.data.role === 'admin' || accountCheck.data.role === 'staff' || accountCheck.data.role === 'aiutante');
           console.log('[poll] cambio ruolo: ' + oldRole + ' → ' + accountCheck.data.role);
           if (wasStaff !== isNowStaff) {
             if (isNowStaff) { stopPolling(); initRealtime(); }
@@ -1575,6 +1718,8 @@ async function _pollPublicData() {
 
     // Aggiorna il rendering delle tre pagine pubbliche silenziosamente
     _refreshPublicPages();
+    // Aggiorna cache con i nuovi dati freschi da Supabase
+    _savePublicCache();
     console.log('[poll] dati pubblici aggiornati · ' + new Date().toLocaleTimeString('it-IT'));
   } catch(e) {
     console.warn('[poll] errore:', e.message);
