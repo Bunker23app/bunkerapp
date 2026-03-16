@@ -545,8 +545,11 @@ async function reloadStaffData() {
       });
     }
     console.log('[reloadStaffData] completato per ruolo: ' + _role);
-    _realtimeReady = true;
-  } catch(e) { console.warn('[reloadStaffData]', e.message); }
+  } catch(e) {
+    console.warn('[reloadStaffData]', e.message);
+  } finally {
+    _realtimeReady = true; // garantito anche in caso di errore
+  }
 }
 
 function _applyConfig(cfg) {
@@ -778,7 +781,9 @@ function _restorePublicCache() {
 async function loadAllData() {
   _realtimeReady = false;
   _cacheLoadingInProgress = true; // blocca salvataggio cache durante il caricamento
+  console.log('[loadAllData] START · ruolo=' + (currentUser ? currentUser.role : 'guest'));
   var sb = getSupabase();
+  try {
 
   // ── CACHE: ripristino immediato per tutti i ruoli ───────────────────────────
   // Se la cache esiste, mostra subito i dati dell'ultima sessione mentre
@@ -1018,12 +1023,15 @@ async function loadAllData() {
   } catch(e) { console.warn('[load valutazioni]', e.message); }
 
 
-  // ── CACHE: salva dati freschi da Supabase ────────
-  _cacheLoadingInProgress = false; // sblocca salvataggio cache
-  _savePublicCache();
-
-  // Realtime pronto: da qui in poi gli eventi dei canali sono vere modifiche future
-  _realtimeReady = true;
+    // ── CACHE: salva dati freschi da Supabase ────────
+    _savePublicCache();
+  } catch(e) {
+    console.warn('[loadAllData] errore:', e.message);
+  } finally {
+    _cacheLoadingInProgress = false; // sblocca salvataggio cache
+    _realtimeReady = true; // garantito anche in caso di errore
+    console.log('[loadAllData] FINE · _realtimeReady=' + _realtimeReady);
+  }
 
   // Migrazione da appstate: non più necessaria, gestita via SQL fix_primary_keys.sql
 }
