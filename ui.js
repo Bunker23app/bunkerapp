@@ -4412,6 +4412,53 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+
+// ════════════════════════════════════════════════════════
+// BANNER SINCRONIZZAZIONE — blocca modifiche durante loadAllData
+// ════════════════════════════════════════════════════════
+var _syncBanner = null;
+
+function _showSyncBanner() {
+  if (_syncBanner) return;
+  _syncBanner = document.createElement('div');
+  _syncBanner.id = 'syncBanner';
+  _syncBanner.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:0',
+    'right:0',
+    'z-index:9999',
+    'background:#1a1a00',
+    'border-bottom:1px solid #554400',
+    'color:#cc8800',
+    'font-family:var(--mono)',
+    'font-size:9px',
+    'letter-spacing:2px',
+    'text-align:center',
+    'padding:6px 12px',
+    'pointer-events:none'
+  ].join(';');
+  _syncBanner.textContent = '// SINCRONIZZAZIONE IN CORSO...';
+  document.body.appendChild(_syncBanner);
+  // Disabilita tutti i pulsanti di modifica
+  document.querySelectorAll('.mz-qty-btn, .edit-btn-small, .spesa-check, .btn-primary, .cfg-save-btn').forEach(function(btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+  });
+}
+
+function _hideSyncBanner() {
+  if (_syncBanner) {
+    _syncBanner.parentNode && _syncBanner.parentNode.removeChild(_syncBanner);
+    _syncBanner = null;
+  }
+  // Riabilita i pulsanti
+  document.querySelectorAll('.mz-qty-btn, .edit-btn-small, .spesa-check, .btn-primary, .cfg-save-btn').forEach(function(btn) {
+    btn.disabled = false;
+    btn.style.opacity = '';
+  });
+}
+
 // ════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════

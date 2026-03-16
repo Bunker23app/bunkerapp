@@ -782,6 +782,7 @@ async function loadAllData() {
   _realtimeReady = false;
   _cacheLoadingInProgress = true; // blocca salvataggio cache durante il caricamento
   console.log('[loadAllData] START · ruolo=' + (currentUser ? currentUser.role : 'guest'));
+  if (typeof _showSyncBanner === 'function') _showSyncBanner();
   var sb = getSupabase();
   try {
 
@@ -1030,6 +1031,8 @@ async function loadAllData() {
   } finally {
     _cacheLoadingInProgress = false; // sblocca salvataggio cache
     _realtimeReady = true; // garantito anche in caso di errore
+    if (typeof _hideSyncBanner === 'function') _hideSyncBanner();
+    if (typeof showToast === 'function' && currentUser) showToast('// DATI AGGIORNATI ✓', 'success', 2000);
     console.log('[loadAllData] FINE · _realtimeReady=' + _realtimeReady);
   }
 
