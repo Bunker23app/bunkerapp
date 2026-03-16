@@ -1496,8 +1496,10 @@ function onUserLogin() {
   if (role === 'admin' || role === 'staff' || role === 'aiutante') {
     stopPolling();
     initRealtime();
+    _startCacheTimer();
   } else {
     stopRealtime();
+    _stopCacheTimer();
     initPolling();
   }
 }
@@ -1505,6 +1507,8 @@ function onUserLogin() {
 // Chiamare onUserLogout() al logout per chiudere canali e fermare polling.
 function onUserLogout() {
   _realtimeReady = false;
+  _savePublicCache();
+  _stopCacheTimer();
   stopRealtime();
   stopPolling();
 }
@@ -1516,6 +1520,18 @@ function onUserLogout() {
 var _pollingTimer  = null;
 var _pollingActive = false;
 var POLLING_INTERVAL = 5 * 60 * 1000; // 5 minuti
+
+var _cacheTimer = null;
+var CACHE_SAVE_INTERVAL = 2 * 60 * 1000; // 2 minuti
+
+function _startCacheTimer() {
+  if (_cacheTimer) return;
+  _cacheTimer = setInterval(function() { _savePublicCache(); }, CACHE_SAVE_INTERVAL);
+}
+
+function _stopCacheTimer() {
+  if (_cacheTimer) { clearInterval(_cacheTimer); _cacheTimer = null; }
+}
 
 // Logout forzato con messaggio dedicato (es. account eliminato o sospeso)
 function _forceLogout(motivo) {
