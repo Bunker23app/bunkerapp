@@ -501,6 +501,8 @@ async function doLogin() {
   err.textContent = '';
   // Log per tutti i livelli (staff, admin e utenti registrati)
   addLog('si è connesso');
+  // Carica tutti i dati freschi da Supabase (loadAllData imposta anche _realtimeReady = true)
+  if (typeof loadAllData === 'function') await loadAllData();
   buildAll();
   updateHomeAccessLevel();
   window.scrollTo(0, 0);
@@ -698,6 +700,7 @@ function showTab(name) {
       if (body) body.style.display = 'none';
       if (icon) icon.textContent = '▸';
     });
+    buildMagazzino(); // aggiorna con dati freschi ad ogni apertura
   }
   // Aggiunge uno stato history per gestire il tasto indietro del telefono
   // (non farlo per la dashboard che viene già gestita da navigate)
