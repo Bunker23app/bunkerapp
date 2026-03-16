@@ -76,7 +76,6 @@ function saveConfig() {
       AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
       PAGE_SECTIONS: PAGE_SECTIONS,
       PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
-      WIDGET_PERMS: WIDGET_PERMS,
       ADD_USER_PERM: ADD_USER_PERM,
       GUEST_MESSAGE: GUEST_MESSAGE,
       SPLASH_TEXTS: SPLASH_TEXTS,
@@ -332,8 +331,7 @@ function saveMagazzino() {
           AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
           PAGE_SECTIONS: PAGE_SECTIONS,
           PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
-          WIDGET_PERMS: WIDGET_PERMS,
-          ADD_USER_PERM: ADD_USER_PERM,
+              ADD_USER_PERM: ADD_USER_PERM,
           GUEST_MESSAGE: GUEST_MESSAGE,
           SPLASH_TEXTS: SPLASH_TEXTS,
           LINKS_PAGE: LINKS_PAGE,
@@ -417,25 +415,6 @@ function saveValutazioni() {
   }, 600);
 }
 
-// CONTATORI — upsert per magazzino_id
-function saveContatori() {
-  _debounce('contatori', async function() {
-    if (!_sbReady) return;
-    try {
-      var sb = getSupabase();
-      var rows = Object.keys(CONTATORI).map(function(id) {
-        return {
-          magazzino_id: parseInt(id),
-          acquistato:   CONTATORI[id].acquistato || 0,
-          consumato:    CONTATORI[id].consumato  || 0,
-        };
-      }).filter(function(r){ return r.magazzino_id > 0; });
-      if (!rows.length) return;
-      var res = await sb.from('contatori').upsert(rows, { onConflict: 'magazzino_id' });
-      if (res.error) console.warn('[sb.contatori]', res.error.message);
-    } catch(e) { console.warn('[sb.contatori]', e.message); }
-  }, 600);
-}
 
 // CHAT — inserimento singolo messaggio (realtime nativo)
 async function saveChatMessage(msg) {
@@ -614,7 +593,6 @@ function _applyConfig(cfg) {
     });
   }
   if (cfg.PAGE_EDIT_PERMS) Object.assign(PAGE_EDIT_PERMS, cfg.PAGE_EDIT_PERMS);
-  if (cfg.WIDGET_PERMS)    Object.assign(WIDGET_PERMS, cfg.WIDGET_PERMS);
   if (typeof cfg.ADD_USER_PERM === 'string') ADD_USER_PERM = cfg.ADD_USER_PERM;
   if (cfg.GUEST_MESSAGE)   Object.assign(GUEST_MESSAGE, cfg.GUEST_MESSAGE);
   if (cfg.SPLASH_TEXTS)    Object.assign(SPLASH_TEXTS, cfg.SPLASH_TEXTS);
@@ -666,12 +644,12 @@ function _applyConfig(cfg) {
 
 // ════════════════════════════════════════════════════════
 // CACHE LOCALSTORAGE — guest / Lv1 / Lv2
-// Chiave: bunker23_cache_v1 (aggiornare versione ad ogni cambio struttura dati)
+// Chiave: bunker23_cache_v2 (aggiornare versione ad ogni cambio struttura dati)
 // Campi cachati: EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
 // NON cachati: password, chat, spesa, lavori, magazzino, pagamenti, log
 // ════════════════════════════════════════════════════════
 
-var _CACHE_KEY = 'bunker23_cache_v1';
+var _CACHE_KEY = 'bunker23_cache_v2';
 
 function _savePublicCache() {
   var role = currentUser && currentUser.role ? currentUser.role : '';
@@ -863,8 +841,6 @@ async function loadAllData() {
   var _loadChat       = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
   // Log: solo staff e admin (gli utenti normali non vedono mai il pannello log)
   var _loadLog        = _isStaff;
-  // Contatori: solo staff/admin (tab contatori protetta da canViewContatori)
-  var _loadContatori  = !_isLv12;
 
   // Colonne calendario: utenti normali non hanno bisogno dei campi notifica (sono gestiti solo dallo staff)
   var _calSelect = _isLv12
@@ -882,7 +858,6 @@ async function loadAllData() {
     _loadLog       ? sb.from('log').select('*').order('ts', { ascending: false }).limit(100) : _empty,    // 6 — solo staff (ridotto da 500 a 100)
     sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 7 — sempre
     sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                  // 8 — sempre
-    _loadContatori ? sb.from('contatori').select('*')                                   : _empty,          // 9 — solo Lv3+
   ]);
 
   // 3. CALENDARIO
@@ -1042,19 +1017,6 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load valutazioni]', e.message); }
 
-  // 12. CONTATORI
-  try {
-    var cntRes = batch2[9];
-    if (cntRes.data && cntRes.data.length) {
-      CONTATORI = {};
-      cntRes.data.forEach(function(row) {
-        CONTATORI[row.magazzino_id] = {
-          acquistato: row.acquistato || 0,
-          consumato:  row.consumato  || 0,
-        };
-      });
-    }
-  } catch(e) { console.warn('[load contatori]', e.message); }
 
   // ── CACHE: salva dati freschi da Supabase (solo per guest/Lv1/Lv2) ────────
   _savePublicCache();
@@ -1767,7 +1729,6 @@ function saveToStorage() {
   savePagamenti();
   saveSuggerimenti();
   saveValutazioni();
-  saveContatori();
 }
 
 // ════════════════════════════════════════════════════════

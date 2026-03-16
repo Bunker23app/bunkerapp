@@ -12,7 +12,6 @@ var WIDGET_CONFIG = [
   { id:'profilo',    icon:'👤', label:'PROFILO',          enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',            enabled:true },
   { id:'log',        icon:'📋', label:'LOG EVENTI',       enabled:true, adminOnly:true },
-  { id:'contatori',  icon:'🔢', label:'CONTATORI',        enabled:true, staffOnly:true },
   { id:'inviti',     icon:'🎟', label:'INVITI',            enabled:true },
 ];
 
@@ -26,7 +25,6 @@ var TAB_CONFIG = [
   { id:'cerca',      icon:'🔍', label:'CERCA',        enabled:true },
   { id:'log',        icon:'📋', label:'LOG',          enabled:true, adminOnly:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',      enabled:true },
-  { id:'contatori',  icon:'🔢', label:'CONTATORI',    enabled:true, staffOnly:true },
   { id:'inviti',     icon:'🎟', label:'INVITI',       enabled:true },
 ];
 
@@ -278,38 +276,6 @@ function buildPermPagine(container) {
     });
   });
 
-  // ── Separatore ──
-  var sep1 = document.createElement('div');
-  sep1.style.cssText = 'border-top:1px solid #1a1a1a;margin:14px 0 10px';
-  container.appendChild(sep1);
-
-  // ── Sezione: Widget Contatori ──
-  var hCnt = document.createElement('div');
-  hCnt.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#444;margin:0 0 6px;text-transform:uppercase';
-  hCnt.textContent = '// 🔢 WIDGET CONTATORI';
-  container.appendChild(hCnt);
-
-  var cntItems = [
-    { key:'contatori_view',  label:'VEDERE i contatori' },
-    { key:'contatori_reset', label:'RESETTARE i contatori' },
-  ];
-  cntItems.forEach(function(ci) {
-    var lbl = document.createElement('div');
-    lbl.style.cssText = 'font-family:var(--mono);font-size:8px;letter-spacing:2px;color:#777;margin:10px 0 4px';
-    lbl.textContent = '// ' + ci.label;
-    container.appendChild(lbl);
-
-    [ROLES.ADMIN, ROLES.STAFF, ROLES.AIUTANTE].forEach(function(perm) {
-      var row = document.createElement('div');
-      row.className = 'cfg-perm-row';
-      row.innerHTML =
-        '<span class="cfg-perm-label">' + permLabels[perm] + '</span>' +
-        '<label class="cfg-toggle" style="flex-shrink:0"><input type="radio" name="cfgPermWidget_' + ci.key + '" value="' + perm + '"' +
-        (WIDGET_PERMS[ci.key] === perm ? ' checked' : '') +
-        ' onchange="WIDGET_PERMS[\'' + ci.key + '\']=this.value"><span class="cfg-toggle-slider"></span></label>';
-      container.appendChild(row);
-    });
-  });
 
   // (sezione aggiunta nuovi utenti rimossa — gestita dal sistema QR)
 }
@@ -319,7 +285,7 @@ function salvaPermPagine() {
   updatePageCfgBtns();
   saveConfig();
   showToast('// PERMESSI SALVATI ✓', 'success');
-  addLog('ha aggiornato i permessi (pagine, contatori, utenti)');
+  addLog('ha aggiornato i permessi (pagine, utenti)');
 }
 
 function salvaConfigura() {
@@ -396,17 +362,6 @@ function applyWidgetConfigForRole(role) {
     }
   });
 
-  // Gestione contatori: visibilità basata sul permesso configurato
-  var contatoriEl = existing['contatori'];
-  if (!contatoriEl) contatoriEl = document.querySelector('#tab-dashboard .dash-widget[onclick*="showTab(\'contatori\')"]');
-  if (contatoriEl) {
-    var wContCfg = (config === AIUTANTE_WIDGET_CONFIG)
-      ? AIUTANTE_WIDGET_CONFIG.find(function(x){ return x.id === 'contatori'; })
-      : WIDGET_CONFIG.find(function(x){ return x.id === 'contatori'; });
-    var hasViewPerm = canViewContatori();
-    contatoriEl.style.display = (hasViewPerm && wContCfg && wContCfg.enabled) ? '' : 'none';
-    grid.appendChild(contatoriEl);
-  }
 
   applyWidgetLabels();
 }
@@ -496,12 +451,6 @@ var PAGE_EDIT_PERMS = {
   info:    'admin',
 };
 
-// Permessi widget speciali — vedere e resettare i contatori
-// Valori: 'admin' | 'staff' | 'aiutante'
-var WIDGET_PERMS = {
-  contatori_view:  'staff',
-  contatori_reset: 'staff',
-};
 
 // Permesso per aggiungere nuovi utenti
 // Valori: 'admin' | 'staff'
