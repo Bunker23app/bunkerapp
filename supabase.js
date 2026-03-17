@@ -390,7 +390,7 @@ function saveSuggerimenti() {
     if (!_sbReady) return;
     try {
       var rows = SUGGERIMENTI.map(function(s) {
-        return { id: s.id, testo: s.testo, author: s.author || null, ts: new Date(s.id).toISOString() };
+        return { id: s.id, testo: s.testo, author: s.author || null, ts: s.ts || new Date().toISOString() };
       });
       if (rows.length) {
         var res = await getSupabase().from('suggerimenti').upsert(rows, { onConflict: 'id' });
@@ -1008,7 +1008,7 @@ async function loadAllData() {
     var sugRes = batch2[7];
     if (sugRes.data && sugRes.data.length) {
       SUGGERIMENTI = sugRes.data.map(function(s) {
-        return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
+        return { id: s.id, testo: s.testo, author: s.author, ts: s.ts, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
       });
     }
   } catch(e) { console.warn('[load suggerimenti]', e.message); }
@@ -1709,7 +1709,7 @@ async function _pollPublicData() {
       var sugRes = results[2];
       if (sugRes.data) {
         SUGGERIMENTI = sugRes.data.map(function(s) {
-          return { id: s.id, testo: s.testo, author: s.author, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
+          return { id: s.id, testo: s.testo, author: s.author, ts: s.ts, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
         });
       }
     } catch(e) { console.warn('[poll suggerimenti]', e.message); }

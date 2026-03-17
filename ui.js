@@ -1318,7 +1318,8 @@ function inviaSuggerimento() {
     return;
   }
   _lastSugTime = now;
-  SUGGERIMENTI.unshift({ id: Date.now(), testo: testo, tempo: nowStr() });
+  var _sTs = new Date().toISOString();
+  SUGGERIMENTI.unshift({ id: Date.now(), testo: testo, ts: _sTs, tempo: nowStr() });
   ta.value = '';
   var cnt = document.getElementById('sugCount');
   if (cnt) cnt.textContent = '0 / 150';
@@ -1377,7 +1378,8 @@ function inviaValutazione() {
   var nome = currentUser.name;
   // blocca doppio voto
   if (VALUTAZIONI.some(function(v){ return v.nome === nome; })) return;
-  VALUTAZIONI.unshift({ id: Date.now(), nome: nome, stelle: _starVal || 0, testo: testo, tempo: nowStr() });
+  var _vTs = new Date().toISOString();
+  VALUTAZIONI.unshift({ id: Date.now(), nome: nome, stelle: _starVal || 0, testo: testo, ts: _vTs, tempo: nowStr() });
   ta.value = '';
   setStarVal(0);
   buildValutazioni();
