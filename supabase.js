@@ -406,7 +406,7 @@ function saveValutazioni() {
     if (!_sbReady) return;
     try {
       var rows = VALUTAZIONI.map(function(v) {
-        return { id: v.id, author: v.nome, stelle: v.stelle || 0, testo: v.testo || '', ts: new Date(v.id).toISOString() };
+        return { id: v.id, author: v.nome, stelle: v.stelle || 0, testo: v.testo || '', ts: v.ts || new Date().toISOString() };
       });
       if (rows.length) {
         var res = await getSupabase().from('valutazioni').upsert(rows, { onConflict: 'id' });
@@ -1018,7 +1018,7 @@ async function loadAllData() {
     var valRes = batch2[8];
     if (valRes.data && valRes.data.length) {
       VALUTAZIONI = valRes.data.map(function(v) {
-        return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
+        return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', ts: v.ts, tempo: new Date(v.ts).toLocaleDateString('it-IT') };
       });
     }
   } catch(e) { console.warn('[load valutazioni]', e.message); }
@@ -1719,7 +1719,7 @@ async function _pollPublicData() {
       var valRes = results[3];
       if (valRes.data) {
         VALUTAZIONI = valRes.data.map(function(v) {
-          return { id: v.id, nome: v.author, stelle: v.stelle||0, testo: v.testo||'', tempo: new Date(v.ts).toLocaleDateString('it-IT') };
+          return { id: v.id, nome: v.author, stelle: v.stelle||0, testo: v.testo||'', ts: v.ts, tempo: new Date(v.ts).toLocaleDateString('it-IT') };
         });
       }
     } catch(e) { console.warn('[poll valutazioni]', e.message); }
