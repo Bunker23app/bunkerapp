@@ -2170,8 +2170,7 @@ function esportaPagamenti() {
     }).join(' | ');
     righe.push(p.name + ';' + (p.saldo >= 0 ? '+' : '') + p.saldo.toFixed(2) + '€;' + mov);
   });
-  var csv = righe.join('
-');
+  var csv = righe.join('\n');
   var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
