@@ -2013,10 +2013,17 @@ function buildPagamenti() {
           : '<div style="width:34px;height:34px;border-radius:50%;background:' + member.color + ';display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:14px;color:#fff;flex-shrink:0">' + member.initial + '</div>')
       : '<div style="width:34px;height:34px;border-radius:50%;background:#333;flex-shrink:0"></div>';
 
-    var canEdit   = isAdmin();
-    var isSelf    = currentUser && currentUser.name === p.name;
-    var canPay    = isSelf && p.saldo < 0;
-    var canCharge = isAdmin() || isSelf;
+    var isSelf       = currentUser && currentUser.name === p.name;
+    // MOVIMENTI: propria card per tutti; staff/admin vedono anche le altrui
+    var canMovimenti = isSelf || isStaff();
+    // REGISTRA PAGAMENTO: solo propria card, solo se in debito
+    var canPay       = isSelf && p.saldo < 0;
+    // ADDEBITA / ACCREDITA: solo admin, solo card altrui
+    var canCharge    = isAdmin() && !isSelf;
+    // RIMBORSA: tutti i ruoli, solo card altrui (il mittente deve essere in PAGAMENTI)
+    var canRimborsa  = !isSelf && !!currentUser && PAGAMENTI.some(function(q){ return q.name === currentUser.name; });
+    // MODIFICA SALDO / RIMUOVI: solo admin
+    var canEdit      = isAdmin();
 
     var card = document.createElement('div');
     card.style.cssText = 'background:var(--panel);border:1px solid #1e1e1e;border-radius:4px;margin-bottom:8px;overflow:hidden;';
@@ -2037,19 +2044,23 @@ function buildPagamenti() {
     body.style.cssText = 'border-top:1px solid #1a1a1a;padding:10px 14px;display:flex;flex-direction:column;gap:8px;';
     body.style.display = 'none';
 
-    var btns = [
-      { label:'📋 MOVIMENTI', color:'transparent', border:'#2a3a4a', txtColor:'var(--light)', action: function(){ apriDettaglioPagamento(i); } },
-    ];
+    var btns = [];
+    if (canMovimenti) {
+      btns.push({ label:'📋 MOVIMENTI', color:'transparent', border:'#2a3a4a', txtColor:'var(--light)', action: function(){ apriDettaglioPagamento(i); } });
+    }
+    if (canPay) {
+      btns.push({ label:'✓ REGISTRA PAGAMENTO', color:'transparent', border:'#2a9a2a', txtColor:'#2a9a2a', action: function(){ registraPagamento(i); } });
+    }
     if (canCharge) {
       btns.push({ label:'− ADDEBITA', color:'transparent', border:'#cc2200', txtColor:'#cc2200', action: function(){ autoAddebito(i); } });
       btns.push({ label:'+ ACCREDITA', color:'transparent', border:'#2a9a2a', txtColor:'#2a9a2a', action: function(){ accreditaManuale(i); } });
     }
+    if (canRimborsa) {
+      btns.push({ label:'↩ RIMBORSA', color:'transparent', border:'#8855cc', txtColor:'#aa77ee', action: function(){ rimborsa(i); } });
+    }
     if (canEdit) {
       btns.push({ label:'✏ MODIFICA SALDO', color:'transparent', border:'#334488', txtColor:'#6688cc', action: function(){ modificaSaldo(i); } });
       btns.push({ label:'✕ RIMUOVI UTENTE', color:'transparent', border:'#660000', txtColor:'#993333', action: function(){ rimuoviUtentePagamenti(i); } });
-    }
-    if (canPay) {
-      btns.push({ label:'✓ REGISTRA PAGAMENTO', color:'transparent', border:'#2a9a2a', txtColor:'#2a9a2a', action: function(){ registraPagamento(i); } });
     }
 
     btns.forEach(function(b) {
@@ -2276,6 +2287,73 @@ function accreditaManuale(i) {
     closeModal();
     buildPagamenti();
     savePagamenti();
+  };
+  openModal();
+}
+
+
+function rimborsa(i) {
+  if (!currentUser) return;
+  var dest = PAGAMENTI[i];
+  var mittIdx = PAGAMENTI.findIndex(function(p){ return p.name === currentUser.name; });
+  if (mittIdx < 0) { showToast('// NON SEI IN PAGAMENTI', 'error'); return; }
+  var mitt = PAGAMENTI[mittIdx];
+
+  $id('modalTitle').textContent = 'RIMBORSA · ' + dest.name.toUpperCase();
+  $id('modalBody').innerHTML =
+    '<div style="font-family:var(--mono);font-size:9px;color:#888;letter-spacing:2px;margin-bottom:12px">' +
+      'TUO SALDO: ' + (mitt.saldo >= 0 ? '+' : '') + mitt.saldo.toFixed(2) + '€' +
+    '</div>' +
+    '<div><label class="modal-label">// IMPORTO (€)</label>' +
+      '<input class="modal-input" id="rmbImporto" type="number" step="0.01" min="0.01" placeholder="es. 10.00"/>' +
+    '</div>' +
+    '<div><label class="modal-label">// NOTA (opzionale)</label>' +
+      '<input class="modal-input" id="rmbNota" placeholder="es. Cena di ieri..."/>' +
+    '</div>';
+
+  window._modalCb = async function() {
+    var importo = parseFloat($id('rmbImporto').value) || 0;
+    if (importo <= 0) { showToast('// IMPORTO NON VALIDO', 'error'); return; }
+    var nota = $id('rmbNota').value.trim();
+    var data = new Date().toISOString().slice(0, 10);
+
+    // Aggiorna mittente in memoria
+    mitt.saldo = parseFloat((mitt.saldo - importo).toFixed(2));
+    mitt.movimenti.push({ data: data, importo: -importo, tipo: 'rimborso', nota: '→ ' + dest.name + (nota ? ' · ' + nota : '') });
+    closeModal();
+    buildPagamenti();
+
+    // Upsert mittente
+    var ok1 = await _saveRigaPagamenti(mitt);
+    if (!ok1) {
+      mitt.saldo = parseFloat((mitt.saldo + importo).toFixed(2));
+      mitt.movimenti.pop();
+      buildPagamenti();
+      showToast('// ERRORE SALVATAGGIO — OPERAZIONE ANNULLATA', 'error');
+      return;
+    }
+
+    // Aggiorna destinatario in memoria
+    dest.saldo = parseFloat((dest.saldo + importo).toFixed(2));
+    dest.movimenti.push({ data: data, importo: importo, tipo: 'rimborso', nota: '← ' + mitt.name + (nota ? ' · ' + nota : '') });
+    buildPagamenti();
+
+    // Upsert destinatario
+    var ok2 = await _saveRigaPagamenti(dest);
+    if (!ok2) {
+      // Rollback entrambi in memoria
+      mitt.saldo = parseFloat((mitt.saldo + importo).toFixed(2));
+      mitt.movimenti.pop();
+      dest.saldo = parseFloat((dest.saldo - importo).toFixed(2));
+      dest.movimenti.pop();
+      buildPagamenti();
+      _saveRigaPagamenti(mitt); // best-effort ripristino mittente su Supabase
+      showToast('// ERRORE DESTINATARIO — ROLLBACK ESEGUITO', 'error');
+      return;
+    }
+
+    addLog(currentUser.name + ' ha rimborsato ' + importo.toFixed(2) + '€ a ' + dest.name + (nota ? ' — ' + nota : ''));
+    showToast('// RIMBORSO: ' + importo.toFixed(2) + '€ → ' + dest.name.toUpperCase(), 'ok');
   };
   openModal();
 }
@@ -4191,11 +4269,26 @@ function _applyRoleVisibility() {
   if (isLv12) {
     // Chat completamente nascosta
     _setSection('chat', false);
-    // Tutte le tabelle staff nascoste
-    staffSections.forEach(function(id) { _setSection(id, false); });
+    // Tabelle staff: nascoste, tranne pagamenti se l'utente è presente nella lista
+    staffSections.forEach(function(id) {
+      if (id === 'pagamenti') {
+        var inPagamenti = currentUser && PAGAMENTI.some(function(p){ return p.name === currentUser.name; });
+        _setSection('pagamenti', !!inPagamenti);
+      } else {
+        _setSection(id, false);
+      }
+    });
   } else if (isAiut && typeof AIUTANTE_CONFIG !== 'undefined') {
     _setSection('chat', !!AIUTANTE_CONFIG.chat);
-    staffSections.forEach(function(id) { _setSection(id, !!AIUTANTE_CONFIG[id]); });
+    staffSections.forEach(function(id) {
+      if (id === 'pagamenti' && AIUTANTE_CONFIG.pagamenti) {
+        // Aiutante con pagamenti abilitato: mostra solo se è in lista
+        var inPagamenti = currentUser && PAGAMENTI.some(function(p){ return p.name === currentUser.name; });
+        _setSection('pagamenti', !!inPagamenti);
+      } else {
+        _setSection(id, !!AIUTANTE_CONFIG[id]);
+      }
+    });
   }
   // Staff/admin: nessuna modifica — applyWidgetConfig e applyTabConfig gestiscono già tutto
 }

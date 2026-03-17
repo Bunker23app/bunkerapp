@@ -384,6 +384,21 @@ function savePagamenti() {
   }, 600);
 }
 
+// Salva una singola riga pagamenti su Supabase in modo sincrono (per operazioni atomiche come rimborsa).
+// Restituisce true se ok, false se errore.
+async function _saveRigaPagamenti(p) {
+  if (!_sbReady) return false;
+  try {
+    var res = await getSupabase().from('pagamenti').upsert({
+      member_name: p.name,
+      saldo: p.saldo || 0,
+      movimenti: JSON.stringify(p.movimenti || []),
+    }, { onConflict: 'member_name' });
+    if (res.error) { console.warn('[sb._saveRigaPagamenti]', res.error.message); return false; }
+    return true;
+  } catch(e) { console.warn('[sb._saveRigaPagamenti]', e.message); return false; }
+}
+
 // SUGGERIMENTI — solo upsert. Il DELETE avviene in deleteSuggerimento() via _sbDeleteById().
 function saveSuggerimenti() {
   _debounce('suggerimenti', async function() {
@@ -843,7 +858,9 @@ async function loadAllData() {
   var _loadSpesa      = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.spesa);
   var _loadLavori     = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.lavori);
   var _loadMagazzino  = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.magazzino);
-  var _loadPagamenti  = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.pagamenti);
+  // Pagamenti: staff/admin caricano tutto; Lv12 e aiutante abilitato caricano solo la propria riga
+  var _loadPagamenti  = _isStaff || _isLv12 || (_isAiut && AIUTANTE_CONFIG.pagamenti);
+  var _pagamentiSolo  = (_isLv12 || _isAiut) && !_isStaff; // true = filtro su member_name
   var _loadChat       = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
   // Log: solo staff e admin (gli utenti normali non vedono mai il pannello log)
   var _loadLog        = _isStaff;
@@ -859,7 +876,11 @@ async function loadAllData() {
     _loadSpesa     ? sb.from('spesa').select('*')                                       : _empty,          // 1
     _loadLavori    ? sb.from('lavori').select('*')                                      : _empty,          // 2
     _loadMagazzino ? sb.from('magazzino').select('*')                                   : _empty,          // 3
-    _loadPagamenti ? sb.from('pagamenti').select('*')                                   : _empty,          // 4
+    _loadPagamenti
+      ? (_pagamentiSolo && currentUser
+          ? sb.from('pagamenti').select('*').eq('member_name', currentUser.name)
+          : sb.from('pagamenti').select('*'))
+      : _empty,          // 4
     _loadChat      ? sb.from('chat').select('*').order('ts', { ascending: true }).limit(200) : _empty,    // 5
     _loadLog       ? sb.from('log').select('*').order('ts', { ascending: false }).limit(100) : _empty,    // 6 — solo staff (ridotto da 500 a 100)
     sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 7 — sempre
