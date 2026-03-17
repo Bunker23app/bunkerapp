@@ -367,6 +367,28 @@ function openProfiloUtente() {
       saveMembers();
     };
     // Genera QR nel profilo per ogni invito ricevuto
+
+    // Pulsante PAGAMENTI per Lv12 presenti nella tabella pagamenti
+    if (currentUser && (currentUser.role === ROLES.UTENTE || currentUser.role === ROLES.PREMIUM)) {
+      var _inPag = PAGAMENTI.some(function(p){ return p.name === currentUser.name; });
+      if (_inPag) {
+        var _modalBody = document.getElementById('modalBody');
+        if (_modalBody) {
+          var _pagBtn = document.createElement('button');
+          _pagBtn.textContent = '💳 I MIEI PAGAMENTI';
+          _pagBtn.style.cssText = 'width:100%;margin-top:16px;padding:12px;background:transparent;border:1px solid #8855cc;color:#aa77ee;font-family:var(--mono);font-size:10px;letter-spacing:2px;border-radius:2px;cursor:pointer;text-align:left;';
+          _pagBtn.onclick = function() {
+            closeModal();
+            renderAvatar(document.getElementById('staffAvatar'), currentUser);
+            document.getElementById('staffName').textContent = currentUser.name.toUpperCase();
+            document.getElementById('staffRole').textContent = roleLabel(currentUser.role).label;
+            showTab('pagamenti');
+            navigate('screenStaff');
+          };
+          _modalBody.appendChild(_pagBtn);
+        }
+      }
+    }
   }, 50);
 }
 
@@ -679,7 +701,7 @@ function showTab(name) {
   if (staffScreen && name !== 'chat') staffScreen.scrollTop = 0;
   // Mostra/nascondi pulsante torna alla dashboard
   var btnDash = document.getElementById('btnTornaDash');
-  if (btnDash) btnDash.style.display = (name === 'dashboard') ? 'none' : '';
+  if (btnDash) btnDash.style.display = (name === 'dashboard' || isUtente()) ? 'none' : '';
   // Reset unread counters when tab opened
   if (name === 'chat') { _unreadChat = 0; updateDash(); buildChat();
     var btnSC = document.getElementById('btnSvuotaChat');
