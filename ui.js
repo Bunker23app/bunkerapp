@@ -2250,7 +2250,8 @@ function registraPagamento(i) {
     addLog('pagamento registrato: ' + p.name + ' +' + importo + '€ — ' + nota);
     closeModal();
     buildPagamenti();
-    savePagamenti();
+    // Usa _saveRigaPagamenti per non sovrascrivere righe non caricate (es. Lv12 con lista parziale)
+    _saveRigaPagamenti(PAGAMENTI[i]);
   };
   openModal();
 }
@@ -2302,7 +2303,7 @@ function autoAddebito(i) {
     addLog('auto-addebito: ' + p.name + ' -' + importo + '€ — ' + nota);
     closeModal();
     buildPagamenti();
-    savePagamenti();
+    _saveRigaPagamenti(PAGAMENTI[i]);
   };
   openModal();
 }
@@ -2325,7 +2326,7 @@ function accreditaManuale(i) {
     addLog('accredito: ' + p.name + ' +' + importo + '€ — ' + nota);
     closeModal();
     buildPagamenti();
-    savePagamenti();
+    _saveRigaPagamenti(PAGAMENTI[i]);
   };
   openModal();
 }
