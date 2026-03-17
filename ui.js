@@ -2033,6 +2033,8 @@ function buildPagamenti() {
 
   var inDebito = 0;
   PAGAMENTI.forEach(function(p, i) {
+    // Lv12 (utente/premium): mostra solo la propria card
+    if (isUtente() && !(currentUser && currentUser.name === p.name)) return;
     if (p.saldo < 0) inDebito++;
     var member = MEMBERS.find(function(m){ return m.name === p.name; });
     var color = p.saldo > 0 ? '#2a9a2a' : p.saldo < 0 ? '#cc2200' : '#555';
@@ -2120,13 +2122,19 @@ function buildPagamenti() {
   var wp = document.getElementById('wPagamenti');
   if (wp) wp.textContent = inDebito;
 
-  // Pulsante AGGIUNGI UTENTE (solo admin)
+  // Pulsanti admin in fondo
   if (isAdmin()) {
     var addBtn = document.createElement('button');
     addBtn.textContent = '+ AGGIUNGI UTENTE';
     addBtn.style.cssText = 'width:100%;margin-top:8px;padding:12px;background:transparent;border:1px solid rgba(0,255,204,0.3);color:var(--cyan);font-family:var(--mono);font-size:10px;letter-spacing:2px;border-radius:2px;cursor:pointer;';
     addBtn.addEventListener('click', function() { aggiungiUtentePagamenti(); });
     list.appendChild(addBtn);
+
+    var expBtn = document.createElement('button');
+    expBtn.textContent = '⬇ ESPORTA BACKUP';
+    expBtn.style.cssText = 'width:100%;margin-top:6px;padding:12px;background:transparent;border:1px solid #334455;color:#556677;font-family:var(--mono);font-size:10px;letter-spacing:2px;border-radius:2px;cursor:pointer;';
+    expBtn.addEventListener('click', function() { esportaPagamenti(); });
+    list.appendChild(expBtn);
   }
 }
 
@@ -2150,6 +2158,28 @@ function aggiungiUtentePagamenti() {
     addLog('aggiunto utente pagamenti: ' + nome);
   };
   openModal();
+}
+
+function esportaPagamenti() {
+  if (!isAdmin()) return;
+  var data = new Date().toISOString().slice(0, 10);
+  var righe = ['NOME;SALDO;MOVIMENTI'];
+  PAGAMENTI.forEach(function(p) {
+    var mov = p.movimenti.map(function(m) {
+      return m.data + ' ' + (m.importo >= 0 ? '+' : '') + m.importo.toFixed(2) + '€ [' + m.tipo + '] ' + (m.nota || '');
+    }).join(' | ');
+    righe.push(p.name + ';' + (p.saldo >= 0 ? '+' : '') + p.saldo.toFixed(2) + '€;' + mov);
+  });
+  var csv = righe.join('
+');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'pagamenti_backup_' + data + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('// BACKUP ESPORTATO', 'ok');
 }
 
 function rimuoviUtentePagamenti(i) {
