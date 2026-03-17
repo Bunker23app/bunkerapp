@@ -554,18 +554,7 @@ async function doLogin() {
   applyPageSections('home');
   applyPageSections('bacheca');
   applyPageSections('info');
-  // Lv12 presente in PAGAMENTI → porta a screenStaff aperto sulla tab pagamenti
-  var _isLv12Login = (member.role === ROLES.UTENTE || member.role === ROLES.PREMIUM);
-  var _hasPagLogin = _isLv12Login && PAGAMENTI.some(function(p){ return p.name === member.name; });
-  if (_hasPagLogin) {
-    renderAvatar(document.getElementById('staffAvatar'), member);
-    document.getElementById('staffName').textContent = member.name.toUpperCase();
-    document.getElementById('staffRole').textContent = roleLabel(member.role).label;
-    showTab('pagamenti');
-    navigate('screenStaff');
-  } else {
-    navigate('screenHome');
-  }
+  navigate('screenHome');
   // Se l'utente è arrivato cliccando una notifica push con ?evento=ID, naviga all'evento
   if (_pendingEventoId) {
     navigaAdEvento(_pendingEventoId);
@@ -4542,18 +4531,7 @@ document.addEventListener('DOMContentLoaded', function() {
         applyPageSections('home');
         applyPageSections('bacheca');
         applyPageSections('info');
-        // Lv12 presente in PAGAMENTI → porta a screenStaff sulla tab pagamenti
-        var _isLv12Init = (currentUser.role === ROLES.UTENTE || currentUser.role === ROLES.PREMIUM);
-        var _hasPagInit = _isLv12Init && PAGAMENTI.some(function(p){ return p.name === currentUser.name; });
-        if (_hasPagInit) {
-          renderAvatar(document.getElementById('staffAvatar'), currentUser);
-          document.getElementById('staffName').textContent = currentUser.name.toUpperCase();
-          document.getElementById('staffRole').textContent = roleLabel(currentUser.role).label;
-          showTab('pagamenti');
-          navigate('screenStaff');
-        } else {
-          navigate('screenHome');
-        }
+        navigate('screenHome');
         showToast('// BENTORNATO ' + currentUser.name.toUpperCase(), 'ok');
       } else {
         applyPageSections('home');
