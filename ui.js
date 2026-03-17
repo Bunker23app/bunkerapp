@@ -2144,6 +2144,7 @@ function aggiungiUtentePagamenti() {
     PAGAMENTI.push({ name: nome, saldo: 0, movimenti: [] });
     savePagamenti();
     buildPagamenti();
+    _applyRoleVisibility();
     closeModal();
     showToast('// UTENTE AGGIUNTO: ' + nome.toUpperCase(), 'success');
     addLog('aggiunto utente pagamenti: ' + nome);
@@ -2161,6 +2162,11 @@ function rimuoviUtentePagamenti(i) {
       } catch(e) { console.warn('[rimuovi pagamento]', e.message); }
       PAGAMENTI.splice(i, 1);
       buildPagamenti();
+      _applyRoleVisibility();
+      // Se l'utente rimosso è il Lv12 corrente → non ha più accesso, torna a screenHome
+      if (currentUser && currentUser.name === p.name && isUtente()) {
+        navigate('screenHome');
+      }
       showToast('// UTENTE RIMOSSO: ' + p.name.toUpperCase(), 'success');
       addLog('rimosso utente pagamenti: ' + p.name);
     },
