@@ -4226,7 +4226,7 @@ function importaDati(input) {
   reader.onload = function(e) {
     try {
       var data = JSON.parse(e.target.result);
-      if (!data.EVENTI || !data.BACHECA) throw new Error('File non valido');
+      if (!data.version || !Array.isArray(data.EVENTI)) throw new Error('File non valido');
       EVENTI  = data.EVENTI;
       BACHECA = data.BACHECA;
       INFO    = data.INFO    || INFO;
