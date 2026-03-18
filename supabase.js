@@ -649,7 +649,7 @@ function _applyConfig(cfg) {
 
 // ════════════════════════════════════════════════════════
 // CACHE LOCALSTORAGE — tutti i ruoli (guest, utente, premium, aiutante, staff, admin)
-// Chiave: bunker23_cache_v6 (aggiornare versione ad ogni cambio struttura dati)
+// Chiave: bunker23_cache_v7 (aggiornare versione ad ogni cambio struttura dati)
 // Campi cachati per ruolo:
 //   Tutti:        EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
 //                 + WIDGET_CONFIG (ordine+enabled), TAB_CONFIG (enabled)
@@ -660,7 +660,7 @@ function _applyConfig(cfg) {
 // NON cachati: password, log raw, dati sensibili
 // ════════════════════════════════════════════════════════
 
-var _CACHE_KEY = 'bunker23_cache_v6';
+var _CACHE_KEY = 'bunker23_cache_v7';
 
 // Timestamp dell'ultimo fetch riuscito per ogni tabella (popolato da _restorePublicCache)
 var _lastFetch = {}; // { appconfig: ISOstring, calendario: ISOstring, members: ISOstring, ... }
@@ -687,6 +687,12 @@ function _savePublicCache() {
       // ── Config UI (tutti i ruoli) — serializzati slim per evitare di perdere adminOnly ecc.
       WIDGET_CONFIG: WIDGET_CONFIG.map(function(w){ return { id: w.id, enabled: w.enabled, label: w.label }; }),
       TAB_CONFIG:    TAB_CONFIG.map(function(t){ return { id: t.id, enabled: t.enabled }; }),
+      // Fix updated_at: questi dati vengono da appconfig e vengono persi se appconfig
+      // viene skippata dal check updated_at. Salvati per tutti i ruoli.
+      BENVENUTO_TEXT: BENVENUTO_TEXT,
+      LINKS_PAGE:     LINKS_PAGE,
+      LINKS_EVENTO:   LINKS_EVENTO,
+      PAGE_SECTIONS:  PAGE_SECTIONS,
     };
 
     if (_isPublic) {
@@ -706,6 +712,10 @@ function _savePublicCache() {
       payload.MAGAZZINO = MAGAZZINO;
       payload.PAGAMENTI = PAGAMENTI;
       payload.LOG       = LOG;
+      // Config aiutante — staff/admin possono modificarla, deve sopravvivere al check updated_at
+      payload.AIUTANTE_CONFIG        = AIUTANTE_CONFIG;
+      payload.AIUTANTE_WIDGET_CONFIG = AIUTANTE_WIDGET_CONFIG.map(function(w){ return { id: w.id, enabled: w.enabled, label: w.label }; });
+      payload.AIUTANTE_TAB_CONFIG    = AIUTANTE_TAB_CONFIG.map(function(t){ return { id: t.id, enabled: t.enabled }; });
     } else if (_isAiut) {
       // Aiutante: solo le sezioni abilitate in AIUTANTE_CONFIG
       if (AIUTANTE_CONFIG.spesa)     payload.SPESA     = SPESA;
@@ -798,6 +808,24 @@ function _restorePublicCache() {
     // solo quando appconfig viene scaricata da Supabase. Con il sistema updated_at
     // che skippa appconfig se non cambiata, senza questa cache le config tornano
     // ai valori hardcodati ad ogni reload.
+    if (typeof payload.BENVENUTO_TEXT === 'string') BENVENUTO_TEXT = payload.BENVENUTO_TEXT;
+    if (payload.LINKS_PAGE && typeof payload.LINKS_PAGE === 'object')   Object.assign(LINKS_PAGE, payload.LINKS_PAGE);
+    if (payload.LINKS_EVENTO && typeof payload.LINKS_EVENTO === 'object') Object.assign(LINKS_EVENTO, payload.LINKS_EVENTO);
+    if (payload.PAGE_SECTIONS && typeof payload.PAGE_SECTIONS === 'object') {
+      Object.keys(payload.PAGE_SECTIONS).forEach(function(page) {
+        if (!PAGE_SECTIONS[page] || !Array.isArray(payload.PAGE_SECTIONS[page])) return;
+        var ordered = [];
+        payload.PAGE_SECTIONS[page].forEach(function(ds) {
+          var s = PAGE_SECTIONS[page].find(function(x){ return x.id === ds.id; });
+          if (s) { s.enabled = ds.enabled; ordered.push(s); }
+        });
+        PAGE_SECTIONS[page].forEach(function(s) {
+          if (!ordered.find(function(x){ return x.id === s.id; })) ordered.push(s);
+        });
+        PAGE_SECTIONS[page].length = 0;
+        ordered.forEach(function(s){ PAGE_SECTIONS[page].push(s); });
+      });
+    }
     if (Array.isArray(payload.WIDGET_CONFIG)) {
       payload.WIDGET_CONFIG.forEach(function(dw) {
         var w = WIDGET_CONFIG.find(function(x){ return x.id === dw.id; });
@@ -822,7 +850,7 @@ function _restorePublicCache() {
       });
     }
     // ── Config UI aiutante ───────────────────────────────────────────────
-    if (_wasAiut) {
+    if (_wasAiut || _wasStaffAdmin) {
       if (payload.AIUTANTE_CONFIG && typeof payload.AIUTANTE_CONFIG === 'object') {
         Object.assign(AIUTANTE_CONFIG, payload.AIUTANTE_CONFIG);
       }
