@@ -637,13 +637,20 @@ function _applyConfig(cfg) {
 }
 
 // ════════════════════════════════════════════════════════
-// CACHE LOCALSTORAGE — guest / Lv1 / Lv2
-// Chiave: bunker23_cache_v2 (aggiornare versione ad ogni cambio struttura dati)
-// Campi cachati: EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
-// NON cachati: password, spesa, lavori, magazzino, pagamenti, log
+// CACHE LOCALSTORAGE — tutti i ruoli (guest, utente, premium, aiutante, staff, admin)
+// Chiave: bunker23_cache_v5 (aggiornare versione ad ogni cambio struttura dati)
+// Campi cachati per ruolo:
+//   Tutti:        EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
+//   Aiutante:     + SPESA/LAVORI/MAGAZZINO/PAGAMENTI secondo AIUTANTE_CONFIG
+//   Staff/Admin:  + SPESA, LAVORI, MAGAZZINO, PAGAMENTI, LOG
+// Ottimizzazione egress: lastFetch per tabella — scarica solo se updated_at è cambiato
+// NON cachati: password, log raw, dati sensibili
 // ════════════════════════════════════════════════════════
 
-var _CACHE_KEY = 'bunker23_cache_v3';
+var _CACHE_KEY = 'bunker23_cache_v5';
+
+// Timestamp dell'ultimo fetch riuscito per ogni tabella (popolato da _restorePublicCache)
+var _lastFetch = {}; // { appconfig: ISOstring, calendario: ISOstring, members: ISOstring, ... }
 
 function _savePublicCache() {
   if (_cacheLoadingInProgress) return; // non salvare durante loadAllData
@@ -654,8 +661,9 @@ function _savePublicCache() {
   // Cache attiva per tutti i ruoli
   try {
     var payload = {
-      ts:   Date.now(),
-      role: role, // salvato per sapere quali campi aspettarsi al restore
+      ts:        Date.now(),
+      role:      role, // salvato per sapere quali campi aspettarsi al restore
+      lastFetch: _lastFetch, // timestamp ultimo fetch riuscito per tabella (check updated_at)
       // ── Dati pubblici (tutti i ruoli) ────────────────────────────────────
       EVENTI:       EVENTI,
       BACHECA:      BACHECA,
@@ -708,6 +716,13 @@ function _restorePublicCache() {
     var cachedRole = payload.role || '';
     var _wasStaffAdmin = (cachedRole === 'admin' || cachedRole === 'staff');
     var _wasAiut       = (cachedRole === 'aiutante');
+
+    // ── Ripristina lastFetch per il check updated_at ──────────────────────
+    if (payload.lastFetch && typeof payload.lastFetch === 'object') {
+      _lastFetch = payload.lastFetch;
+    } else {
+      _lastFetch = {};
+    }
 
     // ── Dati pubblici (tutti i ruoli) ────────────────────────────────────
     if (Array.isArray(payload.EVENTI) && payload.EVENTI.length)  EVENTI       = payload.EVENTI;
@@ -779,33 +794,109 @@ async function loadAllData() {
   var _cacheRestored = _restorePublicCache();
   if (_cacheRestored && typeof buildAll === 'function') buildAll(); // UI immediata con dati cached
 
-  // ── BATCH 1 (parallelo): config + members ─────────────────────────────────
+  // ── OTTIMIZZAZIONE EGRESS: helper check updated_at ───────────────────────
+  // Per ogni tabella controlla se updated_at è cambiato rispetto all'ultimo fetch.
+  // Se non è cambiato, salta il download e usa i dati già in memoria (da cache).
+  // Ritorna true se la tabella va scaricata, false se è ancora valida.
+  async function _needsRefresh(tableName, idFilter) {
+    try {
+      var q = sb.from(tableName).select('updated_at').order('updated_at', { ascending: false }).limit(1);
+      if (idFilter) q = q.eq('id', idFilter); // per appconfig (id=1)
+      var res = await q.single ? q.single() : q;
+      // appconfig usa single(), le altre no — gestiamo entrambi
+      var row = res.data;
+      if (!row) return true; // tabella vuota o errore: scarica comunque
+      // Per query senza .single() res.data è array
+      var remoteTs = Array.isArray(row) ? (row[0] && row[0].updated_at) : row.updated_at;
+      if (!remoteTs) return true; // colonna assente: scarica comunque
+      var cached = _lastFetch[tableName];
+      if (!cached) return true; // primo accesso: scarica
+      // Scarica solo se il DB è più recente della cache
+      var changed = new Date(remoteTs).getTime() > new Date(cached).getTime();
+      console.log('[egress] ' + tableName + ': ' + (changed ? 'CAMBIATA → download' : 'invariata → skip'));
+      return changed;
+    } catch(e) {
+      console.warn('[egress] check ' + tableName + ':', e.message);
+      return true; // in caso di errore scarica sempre (safe fallback)
+    }
+  }
+
+  // ── BATCH 0 (parallelo): check updated_at per tutte le tabelle ───────────
+  // Un solo round-trip leggero (solo il MAX updated_at per tabella) prima
+  // di decidere quali tabelle scaricare per intero.
+  var _roleEarly  = currentUser ? currentUser.role : '';
+  var _isLv12Early = (_roleEarly === 'utente' || _roleEarly === 'premium' || _roleEarly === '');
+  var _isAiutEarly = (_roleEarly === 'aiutante');
+  var _isStaffEarly = (_roleEarly === 'staff' || _roleEarly === 'admin');
+
+  var _chkLoadSpesa     = !_isLv12Early && (!_isAiutEarly || AIUTANTE_CONFIG.spesa);
+  var _chkLoadLavori    = !_isLv12Early && (!_isAiutEarly || AIUTANTE_CONFIG.lavori);
+  var _chkLoadMagazzino = !_isLv12Early && (!_isAiutEarly || AIUTANTE_CONFIG.magazzino);
+  var _chkLoadPagamenti = _isStaffEarly || _isLv12Early || (_isAiutEarly && AIUTANTE_CONFIG.pagamenti);
+
+  var _chkAppconfig  = sb.from('appconfig').select('updated_at').eq('id', 1).single();
+  var _chkMembers    = sb.from('members').select('updated_at').order('updated_at', { ascending: false }).limit(1);
+  var _chkCalendario = sb.from('calendario').select('updated_at').order('updated_at', { ascending: false }).limit(1);
+  var _chkSpesa      = _chkLoadSpesa     ? sb.from('spesa').select('updated_at').order('updated_at', { ascending: false }).limit(1)     : Promise.resolve({ data: null });
+  var _chkLavori     = _chkLoadLavori    ? sb.from('lavori').select('updated_at').order('updated_at', { ascending: false }).limit(1)    : Promise.resolve({ data: null });
+  var _chkMagazzino  = _chkLoadMagazzino ? sb.from('magazzino').select('updated_at').order('updated_at', { ascending: false }).limit(1) : Promise.resolve({ data: null });
+  var _chkPagamenti  = _chkLoadPagamenti ? sb.from('pagamenti').select('updated_at').order('updated_at', { ascending: false }).limit(1) : Promise.resolve({ data: null });
+
+  var checks = await Promise.all([_chkAppconfig, _chkMembers, _chkCalendario, _chkSpesa, _chkLavori, _chkMagazzino, _chkPagamenti]);
+
+  function _isChanged(checkRes, tableName) {
+    try {
+      var row = checkRes.data;
+      if (!row) return true;
+      var remoteTs = Array.isArray(row) ? (row[0] && row[0].updated_at) : row.updated_at;
+      if (!remoteTs) return true;
+      var cached = _lastFetch[tableName];
+      if (!cached) return true;
+      var changed = new Date(remoteTs).getTime() > new Date(cached).getTime();
+      console.log('[egress] ' + tableName + ': ' + (changed ? 'CAMBIATA → download' : 'invariata → skip'));
+      return changed;
+    } catch(e) { return true; }
+  }
+
+  var _fetchAppconfig  = _isChanged(checks[0], 'appconfig');
+  var _fetchMembers    = _isChanged(checks[1], 'members');
+  var _fetchCalendario = _isChanged(checks[2], 'calendario');
+  var _fetchSpesa      = _chkLoadSpesa     && _isChanged(checks[3], 'spesa');
+  var _fetchLavori     = _chkLoadLavori    && _isChanged(checks[4], 'lavori');
+  var _fetchMagazzino  = _chkLoadMagazzino && _isChanged(checks[5], 'magazzino');
+  var _fetchPagamenti  = _chkLoadPagamenti && _isChanged(checks[6], 'pagamenti');
+
+  // ── BATCH 1 (parallelo): config + members — solo se cambiati ─────────────
   // members deve essere disponibile prima del LOG (batch 2) che lo referenzia.
   // Per Lv1/Lv2 scarica solo le colonne necessarie alla UI pubblica:
   // name, initial, color, role, foto_url, sospeso — no password_hash, no can_create_profiles.
   // Staff e admin scaricano tutto (*) per gestire il pannello membri.
-  var _roleEarly = currentUser ? currentUser.role : '';
-  var _isLv12Early = (_roleEarly === 'utente' || _roleEarly === 'premium' || _roleEarly === '');
   var _membersSelect = _isLv12Early
     ? 'name,initial,color,role,foto_url,sospeso'
     : '*';
 
+  var _emptyOne = Promise.resolve({ data: null, error: null });
   var batch1 = await Promise.all([
-    sb.from('appconfig').select('data').eq('id', 1).single(),
-    sb.from('members').select(_membersSelect),
+    _fetchAppconfig ? sb.from('appconfig').select('data,updated_at').eq('id', 1).single() : _emptyOne,
+    _fetchMembers   ? sb.from('members').select(_membersSelect.includes('*') ? '*' : (_membersSelect + ',updated_at')) : _emptyOne,
   ]);
 
   // 1. CONFIG
   try {
     var cfgRes = batch1[0];
-    if (cfgRes.data && cfgRes.data.data) _applyConfig(cfgRes.data.data);
+    if (cfgRes.data && cfgRes.data.data) {
+      _applyConfig(cfgRes.data.data);
+      if (cfgRes.data.updated_at) _lastFetch['appconfig'] = cfgRes.data.updated_at;
+    }
   } catch(e) { console.warn('[load config]', e.message); }
 
   // 2. MEMBERS
   try {
     var mRes = batch1[1];
     if (mRes.data && mRes.data.length) {
+      var _mUpdatedAt = null;
       MEMBERS = mRes.data.map(function(dm) {
+        if (dm.updated_at && (!_mUpdatedAt || dm.updated_at > _mUpdatedAt)) _mUpdatedAt = dm.updated_at;
         return {
           name: dm.name, initial: dm.initial, color: dm.color,
           password: dm.password_hash, role: dm.role,
@@ -815,10 +906,11 @@ async function loadAllData() {
           created_at: dm.created_at || null,
         };
       });
+      if (_mUpdatedAt) _lastFetch['members'] = _mUpdatedAt;
     }
   } catch(e) { console.warn('[load members]', e.message); }
 
-  // ── BATCH 2 (parallelo): tabelle in base al ruolo ────────────────────────
+  // ── BATCH 2 (parallelo): tabelle in base al ruolo — solo se cambiate ─────
   // Lv1 (utente) e Lv2 (premium): nessuna tabella staff
   // Lv3 (aiutante): solo le sezioni abilitate in AIUTANTE_CONFIG
   // Lv4+ (staff/admin): tutto
@@ -827,26 +919,25 @@ async function loadAllData() {
   var _isAiut = (_role2 === 'aiutante');
   var _isStaff = (_role2 === 'staff' || _role2 === 'admin');
 
-  var _loadSpesa      = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.spesa);
-  var _loadLavori     = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.lavori);
-  var _loadMagazzino  = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.magazzino);
-  // Pagamenti: staff/admin caricano tutto; Lv12 e aiutante abilitato caricano solo la propria riga
-  var _loadPagamenti  = _isStaff || _isLv12 || (_isAiut && AIUTANTE_CONFIG.pagamenti);
+  var _loadSpesa      = _fetchSpesa;
+  var _loadLavori     = _fetchLavori;
+  var _loadMagazzino  = _fetchMagazzino;
+  var _loadPagamenti  = _fetchPagamenti;
   var _pagamentiSolo  = (_isLv12 || _isAiut) && !_isStaff; // true = filtro su member_name
-  // Log: solo staff e admin (gli utenti normali non vedono mai il pannello log)
+  // Log: solo staff e admin, sempre scaricato (non ha updated_at check — è append-only)
   var _loadLog        = _isStaff;
 
   // Colonne calendario: utenti normali non hanno bisogno dei campi notifica (sono gestiti solo dallo staff)
   var _calSelect = _isLv12
-    ? 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina'
+    ? 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina,updated_at'
     : '*';
 
   var _empty = Promise.resolve({ data: [], error: null });
   var batch2 = await Promise.all([
-    sb.from('calendario').select(_calSelect).order('data', { ascending: true }),                           // 0 — sempre
-    _loadSpesa     ? sb.from('spesa').select('*')                                       : _empty,          // 1
-    _loadLavori    ? sb.from('lavori').select('*')                                      : _empty,          // 2
-    _loadMagazzino ? sb.from('magazzino').select('*')                                   : _empty,          // 3
+    _fetchCalendario ? sb.from('calendario').select(_calSelect).order('data', { ascending: true }) : _empty,  // 0 — se cambiato
+    _loadSpesa     ? sb.from('spesa').select('*')                                       : _empty,              // 1
+    _loadLavori    ? sb.from('lavori').select('*')                                      : _empty,              // 2
+    _loadMagazzino ? sb.from('magazzino').select('*')                                   : _empty,              // 3
     _loadPagamenti
       ? (_pagamentiSolo && currentUser
           ? sb.from('pagamenti').select('*').eq('member_name', currentUser.name)
@@ -891,6 +982,9 @@ async function loadAllData() {
       });
       var maxId = EVENTI.reduce(function(m,e){ return Math.max(m, e.id); }, 0);
       if (maxId >= _nextIds.event) _nextIds.event = maxId + 1;
+      // Aggiorna timestamp ultimo fetch
+      var _calMaxTs = calRes.data.reduce(function(mx,e){ return (!mx||e.updated_at>mx)?e.updated_at:mx; }, null);
+      if (_calMaxTs) _lastFetch['calendario'] = _calMaxTs;
     }
   } catch(e) { console.warn('[load calendario]', e.message); }
 
@@ -924,6 +1018,8 @@ async function loadAllData() {
       });
       var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
       if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
+      var _spMaxTs = spRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_spMaxTs) _lastFetch['spesa'] = _spMaxTs;
     }
   } catch(e) { console.warn('[load spesa]', e.message); }
 
@@ -936,6 +1032,8 @@ async function loadAllData() {
       });
       var maxId = LAVORI.reduce(function(m,l){ return Math.max(m,l.id); }, 0);
       if (maxId >= _nextIds.lavori) _nextIds.lavori = maxId + 1;
+      var _lavMaxTs = lavRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_lavMaxTs) _lastFetch['lavori'] = _lavMaxTs;
     }
   } catch(e) { console.warn('[load lavori]', e.message); }
 
@@ -948,6 +1046,8 @@ async function loadAllData() {
         if (item) item.attuale = row.attuale;
       });
       _magazzinoLoadedFromDb = true;
+      var _mzMaxTs = mzRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_mzMaxTs) _lastFetch['magazzino'] = _mzMaxTs;
     }
   } catch(e) { console.warn('[load magazzino]', e.message); }
 
@@ -966,6 +1066,8 @@ async function loadAllData() {
           PAGAMENTI.push({ name: row.member_name, saldo: row.saldo || 0, movimenti: movimenti });
         }
       });
+      var _pagMaxTs = pagRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_pagMaxTs) _lastFetch['pagamenti'] = _pagMaxTs;
     }
   } catch(e) { console.warn('[load pagamenti]', e.message); }
 
@@ -1004,6 +1106,11 @@ async function loadAllData() {
 
 
     // ── CACHE: salva dati freschi da Supabase ────────
+    var _skipped = ['appconfig','members','calendario','spesa','lavori','magazzino','pagamenti'].filter(function(t){
+      return !{ appconfig: _fetchAppconfig, members: _fetchMembers, calendario: _fetchCalendario,
+                spesa: _fetchSpesa, lavori: _fetchLavori, magazzino: _fetchMagazzino, pagamenti: _fetchPagamenti }[t];
+    });
+    if (_skipped.length) console.log('[egress] tabelle skippate (invariate):', _skipped.join(', '));
     _savePublicCache();
   } catch(e) {
     console.warn('[loadAllData] errore:', e.message);
@@ -1602,35 +1709,65 @@ async function _pollPublicData() {
     }
     // ─────────────────────────────────────────────────────────────────────
 
-    // Fetch parallelo: config (bacheca, info, consigliati, valutazioni, suggerimenti),
-    // calendario, valutazioni, suggerimenti.
-    // Per utenti normali il calendario non include i campi notifica (gestiti solo dallo staff).
+    // Fetch parallelo: check updated_at per appconfig e calendario prima di scaricarli.
+    // suggerimenti e valutazioni sempre scaricati (piccoli, frequenti).
     var _pollCalSelect = currentUser && (currentUser.role === 'staff' || currentUser.role === 'admin')
       ? '*'
-      : 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina';
+      : 'id,titolo,data,data_fine,ora,ora_fine,terminato,luogo,note,descrizione,tipo,locandina,updated_at';
+
+    // Check updated_at in parallelo (query leggere)
+    var pollChecks = await Promise.all([
+      sb.from('appconfig').select('updated_at').eq('id', 1).single(),
+      sb.from('calendario').select('updated_at').order('updated_at', { ascending: false }).limit(1),
+    ]);
+
+    var _pollFetchCfg = (function() {
+      try {
+        var row = pollChecks[0].data;
+        if (!row || !row.updated_at) return true;
+        var cached = _lastFetch['appconfig'];
+        if (!cached) return true;
+        return new Date(row.updated_at).getTime() > new Date(cached).getTime();
+      } catch(e) { return true; }
+    })();
+
+    var _pollFetchCal = (function() {
+      try {
+        var rows = pollChecks[1].data;
+        if (!rows || !rows[0] || !rows[0].updated_at) return true;
+        var cached = _lastFetch['calendario'];
+        if (!cached) return true;
+        return new Date(rows[0].updated_at).getTime() > new Date(cached).getTime();
+      } catch(e) { return true; }
+    })();
+
+    console.log('[poll] appconfig ' + (_pollFetchCfg ? 'CAMBIATA' : 'invariata') + ' · calendario ' + (_pollFetchCal ? 'CAMBIATO' : 'invariato'));
+
+    var _emptyPoll = Promise.resolve({ data: null, error: null });
     var results = await Promise.all([
-      sb.from('appconfig').select('data').eq('id', 1).single(),                                          // 0 — config (solo campi pubblici applicati)
-      sb.from('calendario').select(_pollCalSelect).order('data', { ascending: true }),                   // 1 — eventi
-      sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                             // 2
-      sb.from('valutazioni').select('*').order('ts', { ascending: false }),                              // 3
+      _pollFetchCfg ? sb.from('appconfig').select('data,updated_at').eq('id', 1).single()                          : _emptyPoll,  // 0
+      _pollFetchCal ? sb.from('calendario').select(_pollCalSelect).order('data', { ascending: true })               : _emptyPoll,  // 1
+      sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                                        // 2
+      sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                                         // 3
     ]);
 
     // 0. CONFIG → aggiorna BACHECA, INFO, CONSIGLIATI, EVENTI_VALUTAZIONI
     try {
       var cfgRes = results[0];
-      if (cfgRes.data && cfgRes.data.data) {
+      if (_pollFetchCfg && cfgRes.data && cfgRes.data.data) {
         var cfg = cfgRes.data.data;
         if (cfg.BACHECA)            BACHECA = cfg.BACHECA;
         if (cfg.INFO)               INFO = cfg.INFO;
         if (cfg.CONSIGLIATI)        CONSIGLIATI = cfg.CONSIGLIATI;
         if (cfg.EVENTI_VALUTAZIONI) EVENTI_VALUTAZIONI = cfg.EVENTI_VALUTAZIONI;
+        if (cfgRes.data.updated_at) _lastFetch['appconfig'] = cfgRes.data.updated_at;
       }
     } catch(e) { console.warn('[poll config]', e.message); }
 
     // 1. CALENDARIO → aggiorna EVENTI
     try {
       var calRes = results[1];
-      if (calRes.data) {
+      if (_pollFetchCal && calRes.data) {
         EVENTI = calRes.data.map(function(e) {
           var d = new Date(e.data);
           var obj = {
@@ -1649,6 +1786,8 @@ async function _pollPublicData() {
           }
           return obj;
         });
+        var _pollCalMaxTs = calRes.data.reduce(function(mx,e){ return (!mx||e.updated_at>mx)?e.updated_at:mx; }, null);
+        if (_pollCalMaxTs) _lastFetch['calendario'] = _pollCalMaxTs;
       }
     } catch(e) { console.warn('[poll calendario]', e.message); }
 
