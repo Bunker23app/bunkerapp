@@ -68,6 +68,9 @@ async function _sbDeleteById(table, id) {
 
 // CONFIG (widget, tab, testi, sezioni, ecc.) — blob JSON su appconfig
 function saveConfig() {
+  // Guard: solo admin può sovrascrivere la configurazione globale (widget, tab, sezioni, ecc.).
+  var _role = currentUser ? currentUser.role : '';
+  if (_role !== 'admin') return;
   _debounce('config', async function() {
     var cfg = {
       WIDGET_CONFIG: WIDGET_CONFIG,
@@ -296,6 +299,10 @@ async function saveEventoRow(e) {
 // Il DELETE avviene in deleteLavori() via _sbDeleteById(), mai qui.
 // Questo evita che un aiutante che salva sovrascriva righe aggiunte in concorrenza.
 function saveLavori() {
+  // Guard: bulk upsert di tutti i lavori — solo staff/admin.
+  // Le azioni utente usano saveLavoroRow() chirurgico, non questa.
+  var _role = currentUser ? currentUser.role : '';
+  if (_role !== 'staff' && _role !== 'admin') return;
   _debounce('lavori', async function() {
     if (!_sbReady) return;
     try {
