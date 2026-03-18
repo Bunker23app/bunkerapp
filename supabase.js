@@ -488,6 +488,7 @@ async function deleteLocandina(url) {
 }
 
 // SVUOTA LOG
+async function clearLogRemote() {
   if (!_sbReady) return;
   try { await getSupabase().from('log').delete().gt('id', 0); } catch(e) {}
 }
