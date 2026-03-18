@@ -2122,15 +2122,39 @@ function buildPagamenti() {
 
 
 function aggiungiUtentePagamenti() {
+  // Costruisce lista utenti di MEMBERS non ancora presenti in PAGAMENTI
+  var pagNomi = PAGAMENTI.map(function(p) { return p.name.toLowerCase(); });
+  var disponibili = MEMBERS.filter(function(m) {
+    return !pagNomi.includes(m.name.toLowerCase());
+  });
+
   $id('modalTitle').textContent = 'AGGIUNGI UTENTE · PAGAMENTI';
+
+  if (disponibili.length === 0) {
+    $id('modalBody').innerHTML =
+      '<div style="color:var(--cyan);font-family:var(--mono);font-size:11px;text-align:center;padding:16px 0;">' +
+      '// TUTTI GLI UTENTI SONO GIÀ PRESENTI</div>';
+    window._modalCb = function() { closeModal(); };
+    openModal();
+    return;
+  }
+
+  var opzioni = disponibili.map(function(m) {
+    return '<option value="' + m.name + '">' + m.name + '</option>';
+  }).join('');
+
   $id('modalBody').innerHTML =
-    '<div><label class="modal-label">// NOME UTENTE</label>' +
-    '<input class="modal-input" id="newPagNome" placeholder="es. Mario" maxlength="30"/></div>';
+    '<div>' +
+    '<label class="modal-label">// SELEZIONA UTENTE</label>' +
+    '<select class="modal-input" id="newPagSelect" style="cursor:pointer;">' +
+    '<option value="">— scegli un utente —</option>' +
+    opzioni +
+    '</select>' +
+    '</div>';
+
   window._modalCb = function() {
-    var nome = $id('newPagNome').value.trim();
-    if (!nome) { showToast('// NOME OBBLIGATORIO', 'error'); return; }
-    var exists = PAGAMENTI.find(function(p) { return p.name.toLowerCase() === nome.toLowerCase(); });
-    if (exists) { showToast('// UTENTE GIÀ PRESENTE', 'error'); return; }
+    var nome = $id('newPagSelect').value;
+    if (!nome) { showToast('// SELEZIONA UN UTENTE', 'error'); return; }
     PAGAMENTI.push({ name: nome, saldo: 0, movimenti: [] });
     savePagamenti();
     buildPagamenti();
