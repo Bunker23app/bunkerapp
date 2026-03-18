@@ -4680,6 +4680,13 @@ window.addEventListener('popstate', function(e) {
   // Se siamo dentro screenStaff (area staff/admin)
   if (activeId === 'screenStaff') {
     if (_currentTab !== 'dashboard') {
+      // Utenti non-staff (premium, utente, aiutante) che hanno aperto i pagamenti
+      // tramite il pulsante nel proprio profilo: tornare alla home, non alla dashboard staff
+      if (!isStaff() && _currentTab === 'pagamenti') {
+        guestMode = false;
+        navigate('screenHome', true);
+        return;
+      }
       // Da qualsiasi widget → torna alla dashboard
       // Pusha uno stato esplicito per la dashboard, così il prossimo
       // "indietro" avrà sempre un livello disponibile per tornare alla home pubblica
