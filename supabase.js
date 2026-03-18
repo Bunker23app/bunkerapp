@@ -368,6 +368,10 @@ function saveMagazzino() {
 
 // PAGAMENTI
 function savePagamenti() {
+  // Guard: solo staff/admin possono sovrascrivere l'intera tabella pagamenti.
+  // Gli utenti non-staff caricano solo la propria riga → usare _saveRigaPagamenti().
+  var _role = currentUser ? currentUser.role : '';
+  if (_role !== 'staff' && _role !== 'admin') return;
   _debounce('pagamenti', async function() {
     if (!_sbReady) return;
     try {
@@ -1901,7 +1905,7 @@ function saveToStorage() {
   saveSpesa();
   saveLavori();
   saveMagazzino();
-  savePagamenti();
+  savePagamenti(); // no-op per ruoli non-staff (guard interna)
   saveSuggerimenti();
   saveValutazioni();
 }
