@@ -8,7 +8,6 @@ var WIDGET_CONFIG = [
   { id:'lavori',     icon:'✓',  label:'LAVORI',           enabled:true },
   { id:'magazzino',   icon:'📦', label:'MAGAZZINO',         enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',        enabled:true },
-  { id:'chat',       icon:'💬', label:'MESSAGGI',         enabled:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',          enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',            enabled:true },
   { id:'log',        icon:'📋', label:'LOG EVENTI',       enabled:true, adminOnly:true },
@@ -21,7 +20,6 @@ var TAB_CONFIG = [
   { id:'lavori',     icon:'✓',  label:'LAVORI',       enabled:true },
   { id:'magazzino',   icon:'📦', label:'MAGAZZINO',     enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',    enabled:true },
-  { id:'chat',       icon:'💬', label:'CHAT',         enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',        enabled:true },
   { id:'log',        icon:'📋', label:'LOG',          enabled:true, adminOnly:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',      enabled:true },
@@ -88,7 +86,6 @@ var AIUTANTE_WIDGET_CONFIG = [
   { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
   { id:'magazzino',   icon:'📦', label:'MAGAZZINO',    enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
-  { id:'chat',       icon:'💬', label:'MESSAGGI',    enabled:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
 ];
@@ -99,7 +96,6 @@ var AIUTANTE_TAB_CONFIG = [
   { id:'lavori',     icon:'✓',  label:'LAVORI',      enabled:true },
   { id:'magazzino',   icon:'📦', label:'MAGAZZINO',    enabled:true },
   { id:'pagamenti',  icon:'💳', label:'PAGAMENTI',   enabled:false },
-  { id:'chat',       icon:'💬', label:'CHAT',        enabled:true },
   { id:'cerca',      icon:'🔍', label:'CERCA',       enabled:true },
   { id:'profilo',    icon:'👤', label:'PROFILO',     enabled:true },
 ];
@@ -108,7 +104,7 @@ var AIUTANTE_TAB_CONFIG = [
 // Sovrascritta da supabase.js al caricamento (appconfig.AIUTANTE_SECTIONS)
 // Dichiarata qui come fallback; il valore reale viene da AIUTANTE_CONFIG in supabase.js
 if (typeof AIUTANTE_CONFIG === 'undefined') {
-  var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false, chat:true };
+  var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false };
 }
 
 var _cfgDragSrc = null;
@@ -217,7 +213,6 @@ function buildConfigura() {
       { id:'lavori',    icon:'✓',  label:'LAVORI',     desc:'tabella lavori' },
       { id:'magazzino', icon:'📦', label:'MAGAZZINO',  desc:'tabella magazzino' },
       { id:'pagamenti', icon:'💳', label:'PAGAMENTI',  desc:'tabella pagamenti' },
-      { id:'chat',      icon:'💬', label:'CHAT',       desc:'tabella chat' },
     ];
     aSecList.innerHTML = '';
     _aiutanteSecs.forEach(function(sec) {

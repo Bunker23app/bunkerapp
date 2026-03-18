@@ -320,11 +320,6 @@
           <span class="dash-widget-num" id="wPagamenti">0</span>
           <span class="dash-widget-label" id="wlabel-pagamenti">PAGAMENTI</span>
         </div>
-        <div class="dash-widget" onclick="showTab('chat')">
-          <span class="dash-widget-icon">💬</span>
-          <span class="dash-widget-num" id="wChat">0</span>
-          <span class="dash-widget-label" id="wlabel-chat">MESSAGGI</span>
-        </div>
         <div class="dash-widget" onclick="showTab('profilo')">
           <span class="dash-widget-icon">👤</span>
           <span class="dash-widget-num" id="wProfilo" style="font-size:14px;margin:4px 0">—</span>
@@ -405,20 +400,6 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="add-btn" onclick="openSpesaModal()">+ AGGIUNGI VOCE</button>
       </div>
-    </div>
-  </div>
-
-  <!-- TAB: CHAT -->
-  <div id="tab-chat" style="display:none;flex-direction:column;flex:1;overflow:hidden;height:100%">
-    <div style="padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;gap:6px;align-items:center">
-      <input class="chat-input" id="chatSearch" placeholder="🔍 Cerca nei messaggi..." oninput="filterChat(this.value)" style="font-size:11px;padding:5px 8px"/>
-      <button onclick="clearChatSearch()" style="background:transparent;border:none;color:#444;font-size:13px;cursor:pointer;padding:0 4px" title="Cancella ricerca">✕</button>
-      <button id="btnSvuotaChat" onclick="svuotaChat()" style="display:none;background:transparent;border:1px solid #3a0000;color:#cc2200;font-family:var(--mono);font-size:8px;letter-spacing:1px;cursor:pointer;padding:3px 7px;border-radius:2px;white-space:nowrap" title="Svuota tutta la chat">🗑 SVUOTA</button>
-    </div>
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="chat-input-row">
-      <input class="chat-input" type="text" id="chatInput" placeholder="Scrivi un messaggio..." onkeydown="if(event.key==='Enter')sendChat()"/>
-      <button class="chat-send-btn" onclick="sendChat()">➤</button>
     </div>
   </div>
 

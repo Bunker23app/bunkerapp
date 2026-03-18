@@ -667,7 +667,7 @@ function updateHomeAccessLevel() {
 // ════════════════════════════════════════
 // TABS STAFF
 // ════════════════════════════════════════
-const TABS = ['dashboard','calendario','spesa','chat','log','cerca','lavori','magazzino','pagamenti','profilo','configura','inviti'];
+const TABS = ['dashboard','calendario','spesa','log','cerca','lavori','magazzino','pagamenti','profilo','configura','inviti'];
 var _currentTab = 'dashboard';
 
 function showTab(name) {
@@ -679,23 +679,16 @@ function showTab(name) {
   });
   var active = document.getElementById('tab-' + name);
   if (active) {
-    active.style.display = (name === 'chat') ? 'flex' : 'block';
-    // Scroll to top quando si cambia tab (eccetto chat che va all'ultimo msg)
-    if (name !== 'chat') {
-      active.scrollTop = 0;
-    }
+    active.style.display = 'block';
+    active.scrollTop = 0;
   }
   // Anche il contenitore screenStaff va in cima
   var staffScreen = document.getElementById('screenStaff');
-  if (staffScreen && name !== 'chat') staffScreen.scrollTop = 0;
+  if (staffScreen) staffScreen.scrollTop = 0;
   // Mostra/nascondi pulsante torna alla dashboard
   var btnDash = document.getElementById('btnTornaDash');
   if (btnDash) btnDash.style.display = (name === 'dashboard' || isUtente()) ? 'none' : '';
   // Reset unread counters when tab opened
-  if (name === 'chat') { _unreadChat = 0; updateDash(); buildChat();
-    var btnSC = document.getElementById('btnSvuotaChat');
-    if (btnSC) btnSC.style.display = isAdmin() ? 'inline-block' : 'none';
-  }
   if (name === 'log')  { _unreadLog  = 0; updateDash();
     var btnSL = document.getElementById('btnSvuotaLog');
     if (btnSL) btnSL.style.display = isAdmin() ? 'inline-block' : 'none';
@@ -2456,7 +2449,7 @@ function buildLog() {
 // ════════════════════════════════════════
 // DASHBOARD COUNTS
 // ════════════════════════════════════════
-var _unreadChat = 0;
+
 var _unreadLog  = 0;
 
 function updateDash() {
@@ -2491,10 +2484,6 @@ function updateDash() {
   // Pagamenti: in sospeso
   var wp = document.getElementById('wPagamenti');
   if (wp) wp.textContent = PAGAMENTI.filter(function(p){return !p.pagato;}).length;
-
-  // Chat: solo non letti
-  var wc = document.getElementById('wChat');
-  if (wc) wc.textContent = _unreadChat;
 
   // Log: solo non visti
   var wll = document.getElementById('wLog');
@@ -4230,7 +4219,6 @@ function importaDati(input) {
       SUGGERIMENTI = data.SUGGERIMENTI || SUGGERIMENTI;
       VALUTAZIONI  = data.VALUTAZIONI  || VALUTAZIONI;
       EVENTI_VALUTAZIONI = data.EVENTI_VALUTAZIONI || EVENTI_VALUTAZIONI;
-    if (data.CHAT) CHAT = data.CHAT;
     if (data.LOG) LOG = data.LOG;
       if (data.MEMBERS) {
         data.MEMBERS.forEach(function(dm) {
@@ -4305,7 +4293,7 @@ function buildConsigliati() {
 
 /** Ricostruisce tutta la UI */
 // Nasconde/mostra widget e tab staff in base al ruolo dell'utente corrente
-// Lv1/Lv2: nasconde chat e tutte le tabelle staff (spesa, lavori, magazzino, pagamenti)
+// Lv1/Lv2: nasconde tutte le tabelle staff (spesa, lavori, magazzino, pagamenti)
 // Lv3 (aiutante): rispetta AIUTANTE_CONFIG per ogni sezione
 // Lv4+: nessuna restrizione aggiuntiva
 function _applyRoleVisibility() {
@@ -4325,8 +4313,6 @@ function _applyRoleVisibility() {
   }
 
   if (isLv12) {
-    // Chat completamente nascosta
-    _setSection('chat', false);
     // Tabelle staff: nascoste, tranne pagamenti se l'utente è presente nella lista
     staffSections.forEach(function(id) {
       if (id === 'pagamenti') {
@@ -4337,7 +4323,6 @@ function _applyRoleVisibility() {
       }
     });
   } else if (isAiut && typeof AIUTANTE_CONFIG !== 'undefined') {
-    _setSection('chat', !!AIUTANTE_CONFIG.chat);
     staffSections.forEach(function(id) {
       if (id === 'pagamenti' && AIUTANTE_CONFIG.pagamenti) {
         // Aiutante con pagamenti abilitato: mostra solo se è in lista
@@ -4352,7 +4337,6 @@ function _applyRoleVisibility() {
 }
 
 function buildAll() {
-  // Non resettiamo _unreadChat qui: viene gestito da showTab('chat') e da sendChat()
   buildHomeNextEvent();
   buildEventoInCorsoBanner();
   buildProfilo();
@@ -4374,7 +4358,6 @@ function buildAll() {
   updateLogoutBtns();
   updateStaffNavBtns();
   applyGuestMessage();
-  buildChat();
   _applyRoleVisibility();
 }
 
@@ -4804,110 +4787,6 @@ function modalConfirmWithFeedback() {
 }
 
 
-// ════════════════════════════════════════
-// CHAT
-// ════════════════════════════════════════
-var CHAT = [];
-
-function buildChat() {
-  var box = document.getElementById('chatMessages');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!CHAT.length) {
-    box.innerHTML = '<div style="font-family:var(--mono);font-size:9px;color:#333;text-align:center;padding:30px;letter-spacing:2px">NESSUN MESSAGGIO</div>';
-    return;
-  }
-  CHAT.forEach(function(msg) {
-    var isMine = currentUser && msg.who === currentUser.name;
-    var member = MEMBERS.find(function(m){ return m.name === msg.who; });
-    var color = member ? member.color : '#444';
-    var initial = member ? member.initial : msg.who.charAt(0).toUpperCase();
-    var avatarHtml = member && member.photo
-      ? '<div class="bubble-avatar" style="background:transparent;overflow:hidden"><img src="' + member.photo + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/></div>'
-      : '<div class="bubble-avatar" style="background:' + color + '">' + initial + '</div>';
-    var bubble = document.createElement('div');
-    bubble.className = 'chat-bubble' + (isMine ? ' mine' : '');
-    bubble.innerHTML = avatarHtml +
-      '<div class="bubble-body">' +
-        '<div class="bubble-name">' + msg.who.toUpperCase() + '</div>' +
-        '<div class="bubble-text">' + msg.testo.replace(/</g,'&lt;') + '</div>' +
-        '<div class="bubble-time">' + msg.ora + '</div>' +
-      '</div>';
-    box.appendChild(bubble);
-  });
-  // Scroll all'ultimo messaggio dopo il render
-  function scrollChatBottom() { box.scrollTop = box.scrollHeight; }
-  requestAnimationFrame(function() {
-    requestAnimationFrame(scrollChatBottom);
-  });
-  setTimeout(scrollChatBottom, 80);
-}
-
-function sendChat() {
-  if (!currentUser) return;
-  var input = document.getElementById('chatInput');
-  var testo = input.value.trim();
-  if (!testo) return;
-  var now = new Date();
-  var ora = now.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) + ' · ' + now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-  var msg = { who: currentUser.name, testo: testo, ora: ora, ts: now.getTime() };
-  // Registra la chiave per bloccare l'echo del realtime
-  var key = currentUser.name + '|' + testo;
-  _pendingChatKeys[key] = true;
-  // Rimuovi la chiave dopo 5 secondi come failsafe
-  setTimeout(function() { delete _pendingChatKeys[key]; }, 5000);
-  CHAT.push(msg);
-  input.value = '';
-  buildChat();
-  _unreadChat = 0;
-  saveChatMessage(msg);
-}
-
-// CERCA NELLA CHAT
-// ════════════════════════════════════════
-function filterChat(query) {
-  var q = query.toLowerCase().trim();
-  document.querySelectorAll('#chatMessages .chat-bubble').forEach(function(b) {
-    var text = b.querySelector('.bubble-text');
-    if (!text) return;
-    if (!q) {
-      b.style.display = '';
-      text.innerHTML = text.textContent; // rimuovi highlight
-      return;
-    }
-    var content = text.textContent;
-    if (content.toLowerCase().includes(q)) {
-      b.style.display = '';
-      // Highlight
-      var re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
-      text.innerHTML = content.replace(re, '<mark style="background:#cc220044;color:var(--red);border-radius:1px">$1</mark>');
-    } else {
-      b.style.display = 'none';
-    }
-  });
-}
-
-function clearChatSearch() {
-  var input = document.getElementById('chatSearch');
-  if (input) { input.value = ''; filterChat(''); }
-}
-
-function svuotaChat() {
-  if (!isAdmin()) { showToast('// SOLO ADMIN', 'error'); return; }
-  if (!confirm('Sei sicuro di voler cancellare TUTTA la chat?\nQuesta azione eliminerà i messaggi anche dal database ed è irreversibile.')) return;
-  CHAT = [];
-  buildChat();
-  if (typeof clearChatRemote === 'function') {
-    clearChatRemote().then(function() {
-      showToast('// CHAT SVUOTATA ✓', 'success');
-      addLog('ha svuotato la chat');
-    }).catch(function(e) {
-      showToast('// ERRORE SVUOTA CHAT: ' + (e && e.message ? e.message : '?'), 'error');
-    });
-  } else {
-    showToast('// CHAT SVUOTATA (solo locale) ✓', 'success');
-  }
-}
 
 function svuotaLog() {
   if (!isAdmin()) { showToast('// SOLO ADMIN', 'error'); return; }

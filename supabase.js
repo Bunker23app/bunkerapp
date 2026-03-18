@@ -17,7 +17,7 @@ var _saveTimers = {};
 var _realtimeReady = false;
 var _cacheLoadingInProgress = false; // true durante loadAllData — blocca salvataggio cache con dati parziali
 // Configurazione sezioni DB caricate per gli aiutanti (letta da appconfig.AIUTANTE_SECTIONS)
-var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false, chat:true };
+var AIUTANTE_CONFIG = { spesa:true, lavori:true, magazzino:true, pagamenti:false };
 
 function getSupabase() {
   if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -432,18 +432,6 @@ function saveValutazioni() {
 }
 
 
-// CHAT — inserimento singolo messaggio (realtime nativo)
-async function saveChatMessage(msg) {
-  if (!_sbReady) return;
-  try {
-    var res = await getSupabase().from('chat').insert({
-      author: msg.who,
-      text: msg.testo,
-      ts: new Date(msg.ts).toISOString(),
-    });
-    if (res.error) console.warn('[sb.chat]', res.error.message);
-  } catch(e) { console.warn('[sb.chat]', e.message); }
-}
 
 // LOG — inserimento singola riga (realtime nativo)
 async function saveLogEntry(entry) {
@@ -499,12 +487,7 @@ async function deleteLocandina(url) {
   } catch(e) { console.warn('[storage.locandine delete]', e.message); }
 }
 
-// SVUOTA CHAT / LOG
-async function clearChatRemote() {
-  if (!_sbReady) return;
-  try { await getSupabase().from('chat').delete().gt('id', 0); } catch(e) {}
-}
-async function clearLogRemote() {
+// SVUOTA LOG
   if (!_sbReady) return;
   try { await getSupabase().from('log').delete().gt('id', 0); } catch(e) {}
 }
@@ -519,7 +502,6 @@ async function reloadStaffData() {
   var _loadLavori    = !_isAiut || AIUTANTE_CONFIG.lavori;
   var _loadMagazzino = !_isAiut || AIUTANTE_CONFIG.magazzino;
   var _loadPagamenti = !_isAiut || AIUTANTE_CONFIG.pagamenti;
-  var _loadChat      = !_isAiut || AIUTANTE_CONFIG.chat;
   var _empty = Promise.resolve({ data: [], error: null });
 
   try {
@@ -528,7 +510,6 @@ async function reloadStaffData() {
       _loadLavori    ? sb.from('lavori').select('*')                                     : _empty,
       _loadMagazzino ? sb.from('magazzino').select('*')                                  : _empty,
       _loadPagamenti ? sb.from('pagamenti').select('*')                                  : _empty,
-      _loadChat      ? sb.from('chat').select('*').order('ts',{ascending:true}).limit(200) : _empty,
     ]);
     if (_loadSpesa && res[0].data) {
       SPESA = res[0].data.map(function(s) {
@@ -550,13 +531,6 @@ async function reloadStaffData() {
         var mov = []; try { mov = typeof row.movimenti === 'string' ? JSON.parse(row.movimenti) : (row.movimenti||[]); } catch(e) {}
         if (existing) { existing.saldo = row.saldo||0; existing.movimenti = mov; }
         else PAGAMENTI.push({ name:row.member_name, saldo:row.saldo||0, movimenti:mov });
-      });
-    }
-    if (_loadChat && res[4].data) {
-      CHAT = res[4].data.map(function(c) {
-        var d = new Date(c.ts);
-        var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})+' · '+d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-        return { id:c.id, who:c.author, testo:c.text, ora:ora, ts:d.getTime() };
       });
     }
     console.log('[reloadStaffData] completato per ruolo: ' + _role);
@@ -665,7 +639,7 @@ function _applyConfig(cfg) {
 // CACHE LOCALSTORAGE — guest / Lv1 / Lv2
 // Chiave: bunker23_cache_v2 (aggiornare versione ad ogni cambio struttura dati)
 // Campi cachati: EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
-// NON cachati: password, chat, spesa, lavori, magazzino, pagamenti, log
+// NON cachati: password, spesa, lavori, magazzino, pagamenti, log
 // ════════════════════════════════════════════════════════
 
 var _CACHE_KEY = 'bunker23_cache_v3';
@@ -706,7 +680,6 @@ function _savePublicCache() {
       payload.LAVORI    = LAVORI;
       payload.MAGAZZINO = MAGAZZINO;
       payload.PAGAMENTI = PAGAMENTI;
-      payload.CHAT      = CHAT;
       payload.LOG       = LOG;
     } else if (_isAiut) {
       // Aiutante: solo le sezioni abilitate in AIUTANTE_CONFIG
@@ -714,7 +687,6 @@ function _savePublicCache() {
       if (AIUTANTE_CONFIG.lavori)    payload.LAVORI    = LAVORI;
       if (AIUTANTE_CONFIG.magazzino) payload.MAGAZZINO = MAGAZZINO;
       if (AIUTANTE_CONFIG.pagamenti) payload.PAGAMENTI = PAGAMENTI;
-      if (AIUTANTE_CONFIG.chat)      payload.CHAT      = CHAT;
     }
 
     localStorage.setItem(_CACHE_KEY, JSON.stringify(payload));
@@ -771,7 +743,6 @@ function _restorePublicCache() {
         // PAGAMENTI ha struttura {name, saldo, movimenti} — assegna direttamente
         PAGAMENTI = payload.PAGAMENTI;
       }
-      if (Array.isArray(payload.CHAT)      && payload.CHAT.length)      CHAT      = payload.CHAT;
       if (Array.isArray(payload.LOG)       && payload.LOG.length)        LOG       = payload.LOG;
       // MAGAZZINO: aggiorna quantità hardcodati, replace completo custom (id>=23) per evitare duplicati
       if (Array.isArray(payload.MAGAZZINO) && payload.MAGAZZINO.length) {
@@ -847,7 +818,7 @@ async function loadAllData() {
   } catch(e) { console.warn('[load members]', e.message); }
 
   // ── BATCH 2 (parallelo): tabelle in base al ruolo ────────────────────────
-  // Lv1 (utente) e Lv2 (premium): nessuna tabella staff né chat
+  // Lv1 (utente) e Lv2 (premium): nessuna tabella staff
   // Lv3 (aiutante): solo le sezioni abilitate in AIUTANTE_CONFIG
   // Lv4+ (staff/admin): tutto
   var _role2 = currentUser ? currentUser.role : '';
@@ -861,7 +832,6 @@ async function loadAllData() {
   // Pagamenti: staff/admin caricano tutto; Lv12 e aiutante abilitato caricano solo la propria riga
   var _loadPagamenti  = _isStaff || _isLv12 || (_isAiut && AIUTANTE_CONFIG.pagamenti);
   var _pagamentiSolo  = (_isLv12 || _isAiut) && !_isStaff; // true = filtro su member_name
-  var _loadChat       = !_isLv12 && (!_isAiut || AIUTANTE_CONFIG.chat);
   // Log: solo staff e admin (gli utenti normali non vedono mai il pannello log)
   var _loadLog        = _isStaff;
 
@@ -881,10 +851,9 @@ async function loadAllData() {
           ? sb.from('pagamenti').select('*').eq('member_name', currentUser.name)
           : sb.from('pagamenti').select('*'))
       : _empty,          // 4
-    _loadChat      ? sb.from('chat').select('*').order('ts', { ascending: true }).limit(200) : _empty,    // 5
-    _loadLog       ? sb.from('log').select('*').order('ts', { ascending: false }).limit(100) : _empty,    // 6 — solo staff (ridotto da 500 a 100)
-    sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 7 — sempre
-    sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                  // 8 — sempre
+    _loadLog       ? sb.from('log').select('*').order('ts', { ascending: false }).limit(100) : _empty,    // 5 — solo staff (ridotto da 500 a 100)
+    sb.from('suggerimenti').select('*').order('ts', { ascending: false }),                                 // 6 — sempre
+    sb.from('valutazioni').select('*').order('ts', { ascending: false }),                                  // 7 — sempre
   ]);
 
   // 3. CALENDARIO
@@ -999,21 +968,9 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load pagamenti]', e.message); }
 
-  // 8. CHAT (ultimi 200 messaggi)
+  // 8. LOG (ultimi 100)
   try {
-    var chatRes = batch2[5];
-    if (chatRes.data && chatRes.data.length) {
-      CHAT = chatRes.data.map(function(c) {
-        var d = new Date(c.ts);
-        var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-        return { id: c.id, who: c.author, testo: c.text, ora: ora, ts: d.getTime() };
-      });
-    }
-  } catch(e) { console.warn('[load chat]', e.message); }
-
-  // 9. LOG (ultimi 500)
-  try {
-    var logRes = batch2[6];
+    var logRes = batch2[5];
     if (logRes.data && logRes.data.length) {
       LOG = logRes.data.map(function(l) {
         var d = new Date(l.ts);
@@ -1024,9 +981,9 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load log]', e.message); }
 
-  // 10. SUGGERIMENTI
+  // 9. SUGGERIMENTI
   try {
-    var sugRes = batch2[7];
+    var sugRes = batch2[6];
     if (sugRes.data && sugRes.data.length) {
       SUGGERIMENTI = sugRes.data.map(function(s) {
         return { id: s.id, testo: s.testo, author: s.author, ts: s.ts, tempo: new Date(s.ts).toLocaleDateString('it-IT') };
@@ -1034,9 +991,9 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load suggerimenti]', e.message); }
 
-  // 11. VALUTAZIONI
+  // 10. VALUTAZIONI
   try {
-    var valRes = batch2[8];
+    var valRes = batch2[7];
     if (valRes.data && valRes.data.length) {
       VALUTAZIONI = valRes.data.map(function(v) {
         return { id: v.id, nome: v.author, stelle: v.stelle || 0, testo: v.testo || '', ts: v.ts, tempo: new Date(v.ts).toLocaleDateString('it-IT') };
@@ -1064,7 +1021,6 @@ async function loadAllData() {
 // Il realtime è attivato per utenti con ruolo admin, staff e aiutante.
 // Per tutti gli altri ruoli si usa il polling (vedi initPolling).
 
-var _chatChannel      = null;
 var _logChannel       = null;
 var _magazzinoChannel = null;
 var _calendarioChannel= null;
@@ -1073,8 +1029,6 @@ var _pagamentiChannel = null;
 var _lavoriChannel    = null;
 var _membersChannel   = null;
 var _realtimeActive   = false;
-// Set di "author|testo" dei messaggi inviati da noi, per bloccare il realtime echo
-var _pendingChatKeys = {};
 // Guard per evitare doppio incremento magazzino: quando il client mittente
 // ha già aggiornato localmente in confermaAcquisto, blocca il realtime DELETE su spesa
 var _pendingMagazzinoIds = {};
@@ -1083,13 +1037,12 @@ var _pendingMagazzinoIds = {};
 function stopRealtime() {
   if (!_realtimeActive) return;
   var sb = getSupabase();
-  var channels = [_chatChannel, _logChannel, _magazzinoChannel, _calendarioChannel, _spesaChannel, _pagamentiChannel, _lavoriChannel, _membersChannel];
+  var channels = [_logChannel, _magazzinoChannel, _calendarioChannel, _spesaChannel, _pagamentiChannel, _lavoriChannel, _membersChannel];
   channels.forEach(function(ch) {
     if (ch) {
       try { sb.removeChannel(ch); } catch(e) {}
     }
   });
-  _chatChannel = null;
   _logChannel = null;
   _magazzinoChannel = null;
   _calendarioChannel = null;
@@ -1120,33 +1073,6 @@ function initRealtime() {
   console.log('[realtime] inizializzazione per ' + currentUser.name + ' (' + role + ') · ' + new Date().toLocaleTimeString('it-IT'));
 
   var sb = getSupabase();
-
-  // ── CHAT realtime — INSERT / DELETE ──────────────────────────────────────
-  _chatChannel = sb.channel('chat-realtime')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat' }, function(payload) {
-      if (!_realtimeReady) return;
-      var c = payload.new;
-      if (!c) return;
-      var key = c.author + '|' + c.text;
-      if (_pendingChatKeys[key]) {
-        delete _pendingChatKeys[key];
-        var existing = CHAT.find(function(m){ return m.who === c.author && m.testo === c.text && !m.id; });
-        if (existing) existing.id = c.id;
-        return;
-      }
-      if (CHAT.some(function(m){ return m.id === c.id; })) return;
-      var d = new Date(c.ts);
-      var ora = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-      CHAT.push({ id: c.id, who: c.author, testo: c.text, ora: ora, ts: d.getTime() });
-      _unreadChat++;
-      buildChat();
-      updateDash();
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat' }, function() {
-      if (!_realtimeReady) return;
-      CHAT = []; buildChat(); updateDash();
-    })
-    .subscribe(function(status) { if (status === 'SUBSCRIBED') console.log('Chat realtime OK'); });
 
   // ── LOG realtime — INSERT / DELETE ───────────────────────────────────────
   _logChannel = sb.channel('log-realtime')
