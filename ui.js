@@ -119,30 +119,8 @@ let PAGAMENTI = [
   { name:'Ricia',  saldo:0, movimenti:[] },
 ];
 
-let MAGAZZINO = [
-  { id:1,  nome:'Birra',             attuale:0, minimo:15, unita:'casse',     categoria:'alcolico',   costoUnitario:13.2  },
-  { id:2,  nome:'Gin',               attuale:0, minimo:20, unita:'bottiglie', categoria:'alcolico',   costoUnitario:12    },
-  { id:3,  nome:'Vodka liscia',      attuale:0, minimo:20, unita:'bottiglie', categoria:'alcolico',   costoUnitario:6.45  },
-  { id:4,  nome:'Vodka alla menta',  attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:4.15  },
-  { id:5,  nome:'Vodka alla fragola',attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:3.9   },
-  { id:6,  nome:'Vodka alla pesca',  attuale:0, minimo:3,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:3.9   },
-  { id:7,  nome:'Rum',               attuale:0, minimo:15, unita:'bottiglie', categoria:'alcolico',   costoUnitario:14.4  },
-  { id:8,  nome:'Tequila',           attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:17.9  },
-  { id:9,  nome:'Montenegro',        attuale:0, minimo:10, unita:'bottiglie', categoria:'alcolico',   costoUnitario:12.55 },
-  { id:10, nome:'Jagermaister',      attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:15.9  },
-  { id:11, nome:'Fireball',          attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:17.5  },
-  { id:12, nome:'Sambuca',           attuale:0, minimo:2,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:12    },
-  { id:13, nome:'Branca menta',      attuale:0, minimo:3,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:15.5  },
-  { id:14, nome:'Whiskey',           attuale:0, minimo:5,  unita:'bottiglie', categoria:'alcolico',   costoUnitario:14.2  },
-  { id:15, nome:'Tonica',            attuale:0, minimo:10, unita:'casse',     categoria:'analcolico', costoUnitario:5.7   },
-  { id:16, nome:'Lemon',             attuale:0, minimo:10, unita:'casse',     categoria:'analcolico', costoUnitario:5.4   },
-  { id:17, nome:'Red Bull',          attuale:0, minimo:10, unita:'casse',     categoria:'analcolico', costoUnitario:24    },
-  { id:18, nome:'Pepsi',             attuale:0, minimo:5,  unita:'casse',     categoria:'analcolico', costoUnitario:10.56 },
-  { id:19, nome:'Thè al limone',     attuale:0, minimo:2,  unita:'casse',     categoria:'analcolico', costoUnitario:8.4   },
-  { id:20, nome:'Thè alla pesca',    attuale:0, minimo:2,  unita:'casse',     categoria:'analcolico', costoUnitario:8.4   },
-  { id:21, nome:'Acqua naturale',    attuale:0, minimo:5,  unita:'casse',     categoria:'analcolico', costoUnitario:1.6   },
-  { id:22, nome:'Acqua frizzante',   attuale:0, minimo:5,  unita:'casse',     categoria:'analcolico', costoUnitario:1.6   },
-];
+// MAGAZZINO viene popolato interamente da Supabase
+let MAGAZZINO = [];
 
 let LOG = [];
 let currentUser = null;
@@ -4539,7 +4517,7 @@ document.addEventListener('DOMContentLoaded', function() {
   //    (lettura localStorage prima di buildAll per evitare flash splash/login)
   // 2. Dopo loadAllData(), aggiorna currentUser con i dati freschi dal DB (password, foto, ecc.)
   // 3. syncMagazzinoWithSpesa()+saveSpesa() solo se magazzino è stato caricato da Supabase
-  //    → evita di sovrascrivere dati reali con i valori hardcodati (attuale=0)
+  //    → evita sync con magazzino vuoto se non ancora caricato da Supabase
   (async function() {
     try {
       _sbReady = true;

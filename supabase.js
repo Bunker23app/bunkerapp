@@ -94,7 +94,6 @@ function saveConfig() {
       NOTIFICHE_CONFIG: NOTIFICHE_CONFIG,
       AIUTANTE_SECTIONS: AIUTANTE_CONFIG,
       // Articoli magazzino aggiunti dinamicamente (id >= 23)
-      MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
     };
     await _sbUpsert('appconfig', { id: 1, data: cfg });
   }, 800);
@@ -266,7 +265,15 @@ async function saveLavoroRow(l) {
 async function saveMagazzinoRow(m) {
   if (!_sbReady) return;
   try {
-    var row = { item_id: m.id, attuale: m.attuale };
+    var row = {
+      item_id:        m.id,
+      attuale:        m.attuale,
+      nome:           m.nome,
+      minimo:         m.minimo,
+      unita:          m.unita,
+      categoria:      m.categoria,
+      costo_unitario: m.costoUnitario || 0,
+    };
     var res = await getSupabase().from('magazzino').upsert(row, { onConflict: 'item_id' });
     if (res.error) console.warn('[sb.magazzinoRow upsert]', res.error.message);
   } catch(e) { console.warn('[sb.magazzinoRow]', e.message); }
@@ -317,55 +324,25 @@ function saveLavori() {
   }, 600);
 }
 
-// MAGAZZINO
+// MAGAZZINO — salva tutti i campi (metadati + quantità)
 function saveMagazzino() {
   _debounce('magazzino', async function() {
     if (!_sbReady) return;
     try {
       var sb = getSupabase();
       var rows = MAGAZZINO.map(function(m) {
-        return { item_id: m.id, attuale: m.attuale };
-      });
-
-      // Se ci sono articoli custom (id >= 23), persisti PRIMA la loro definizione in appconfig
-      // in modo che quando il realtime INSERT arriva sugli altri client, la definizione
-      // sia già disponibile nel config. Non usare debounce qui: await diretto.
-      if (MAGAZZINO.some(function(m){ return m.id >= 23; })) {
-        var cfg = {
-          WIDGET_CONFIG: WIDGET_CONFIG,
-          TAB_CONFIG: TAB_CONFIG,
-          BENVENUTO_TEXT: BENVENUTO_TEXT,
-          AIUTANTE_WIDGET_CONFIG: AIUTANTE_WIDGET_CONFIG,
-          AIUTANTE_TAB_CONFIG: AIUTANTE_TAB_CONFIG,
-          PAGE_SECTIONS: PAGE_SECTIONS,
-          PAGE_EDIT_PERMS: PAGE_EDIT_PERMS,
-              ADD_USER_PERM: ADD_USER_PERM,
-          GUEST_MESSAGE: GUEST_MESSAGE,
-          SPLASH_TEXTS: SPLASH_TEXTS,
-          LINKS_PAGE: LINKS_PAGE,
-          LINKS_EVENTO: LINKS_EVENTO,
-          _nextLinkId: _nextLinkId,
-          CONSIGLIATI: CONSIGLIATI,
-          EVENTI_VALUTAZIONI: EVENTI_VALUTAZIONI,
-          BACHECA: BACHECA,
-          INFO: INFO,
-          _nextIds: _nextIds,
-          MAGAZZINO_EXTRA: MAGAZZINO.filter(function(m){ return m.id >= 23; }),
+        return {
+          item_id:        m.id,
+          attuale:        m.attuale,
+          nome:           m.nome,
+          minimo:         m.minimo,
+          unita:          m.unita,
+          categoria:      m.categoria,
+          costo_unitario: m.costoUnitario || 0,
         };
-        await _sbUpsert('appconfig', { id: 1, data: cfg });
-      }
-
-      // Upsert quantità nella tabella magazzino (genera il realtime INSERT/UPDATE)
+      });
       var res = await sb.from('magazzino').upsert(rows, { onConflict: 'item_id' });
-      if (res.error) {
-        // Fallback: delete + insert
-        await sb.from('magazzino').delete().gt('item_id', 0);
-        var res2 = await sb.from('magazzino').insert(rows);
-        if (res2.error) {
-          console.warn('[sb.magazzino] insert fallback:', res2.error.message);
-          showToast('// ERRORE SALVATAGGIO MAGAZZINO: ' + res2.error.message, 'error');
-        }
-      }
+      if (res.error) console.warn('[sb.magazzino upsert]', res.error.message);
     } catch(e) {
       console.warn('[sb.magazzino]', e.message);
       showToast('// ERRORE MAGAZZINO: ' + e.message, 'error');
@@ -623,24 +600,7 @@ function _applyConfig(cfg) {
     var maxIId = INFO.reduce(function(m,b){ return Math.max(m, b.id||0); }, 0);
     if (maxIId >= _nextIds.info) _nextIds.info = maxIId + 1;
   }
-  // Articoli magazzino aggiunti dinamicamente
-  if (cfg.MAGAZZINO_EXTRA && cfg.MAGAZZINO_EXTRA.length) {
-    cfg.MAGAZZINO_EXTRA.forEach(function(extra) {
-      if (!MAGAZZINO.find(function(m){ return m.id === extra.id; })) {
-        MAGAZZINO.push(extra);
-      } else {
-        // Aggiorna la definizione (nome, categoria, minimo, ecc.) ma non la quantità attuale
-        var existing = MAGAZZINO.find(function(m){ return m.id === extra.id; });
-        existing.nome = extra.nome;
-        existing.categoria = extra.categoria;
-        existing.minimo = extra.minimo;
-        existing.unita = extra.unita;
-        existing.costoUnitario = extra.costoUnitario;
-      }
-    });
-    var maxMzId = cfg.MAGAZZINO_EXTRA.reduce(function(mx,m){ return Math.max(mx, m.id||0); }, 22);
-    if (maxMzId >= _nextIds.magazzino) _nextIds.magazzino = maxMzId + 1;
-  }
+  // Magazzino gestito interamente da Supabase — MAGAZZINO_EXTRA non più necessario
   // Notifiche push
   if (cfg.NOTIFICHE_CONFIG) Object.assign(NOTIFICHE_CONFIG, cfg.NOTIFICHE_CONFIG);
   // Sezioni DB accessibili agli aiutanti
@@ -1133,13 +1093,21 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load lavori]', e.message); }
 
-  // 6. MAGAZZINO (solo quantità)
+  // 6. MAGAZZINO — carica tutti i campi (metadati + quantità) da Supabase
   try {
     var mzRes = batch2[3];
     if (mzRes.data && mzRes.data.length) {
-      mzRes.data.forEach(function(row) {
-        var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-        if (item) item.attuale = row.attuale;
+      // Ricostruisce MAGAZZINO interamente da Supabase — nessun hardcoding
+      MAGAZZINO = mzRes.data.map(function(row) {
+        return {
+          id:            row.item_id,
+          nome:          row.nome          || '',
+          attuale:       row.attuale       || 0,
+          minimo:        row.minimo        || 0,
+          unita:         row.unita         || '',
+          categoria:     row.categoria     || 'altro',
+          costoUnitario: row.costo_unitario || 0,
+        };
       });
       _magazzinoLoadedFromDb = true;
       var _mzMaxTs = mzRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
@@ -1301,23 +1269,23 @@ function initRealtime() {
 
   // ── MAGAZZINO realtime — INSERT / UPDATE / DELETE ─────────────────────────
   // Ricarica quantita' dalla tabella magazzino e, se ci sono item_id sconosciuti,
-  // scarica anche l'appconfig per ottenere i nuovi articoli custom (MAGAZZINO_EXTRA).
-  function _reloadMagazzino(fetchConfig) {
-    var sb2 = getSupabase();
-    var tasks = [sb2.from('magazzino').select('*')];
-    if (fetchConfig) tasks.push(sb2.from('appconfig').select('data').eq('id', 1).single());
-    Promise.all(tasks).then(function(results) {
-      var res = results[0];
-      var cfgRes = results[1] || null;
+
+  function _reloadMagazzino() {
+    getSupabase().from('magazzino').select('*').then(function(res) {
       if (res.error) { console.warn('[sb.magazzino reload]', res.error.message); return; }
-      // Se abbiamo il config, applica prima i nuovi articoli extra
-      if (cfgRes && cfgRes.data && cfgRes.data.data) {
-        _applyConfig(cfgRes.data.data);
+      if (res.data) {
+        MAGAZZINO = res.data.map(function(row) {
+          return {
+            id:            row.item_id,
+            nome:          row.nome           || '',
+            attuale:       row.attuale        || 0,
+            minimo:        row.minimo         || 0,
+            unita:         row.unita          || '',
+            categoria:     row.categoria      || 'altro',
+            costoUnitario: row.costo_unitario || 0,
+          };
+        });
       }
-      if (res.data) res.data.forEach(function(r) {
-        var it = MAGAZZINO.find(function(m){ return m.id === r.item_id; });
-        if (it) it.attuale = r.attuale;
-      });
       buildMagazzino(); updateDash();
     });
   }
@@ -1325,27 +1293,28 @@ function initRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'magazzino' }, function(payload) {
       if (!_realtimeReady) return;
       var row = payload.new; if (!row) return;
-      var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; buildMagazzino(); updateDash(); }
-      // item_id sconosciuto = nuovo articolo custom: la definizione è già stata scritta in appconfig
-      // prima dell'upsert magazzino (vedi saveMagazzino). Prova subito; se il nuovo articolo
-      // non è ancora presente nel config (latenza DB), riprova dopo 1500ms.
-      else {
-        _reloadMagazzino(true);
-        setTimeout(function(){
-          // Secondo tentativo: verifica se l'articolo è ora in MAGAZZINO
-          if (!MAGAZZINO.find(function(m){ return m.id === row.item_id; })) {
-            _reloadMagazzino(true);
-          }
-        }, 1500);
-      }
+      var mapped = {
+        id: row.item_id, nome: row.nome || '', attuale: row.attuale || 0,
+        minimo: row.minimo || 0, unita: row.unita || '',
+        categoria: row.categoria || 'altro', costoUnitario: row.costo_unitario || 0,
+      };
+      var idx = MAGAZZINO.findIndex(function(m){ return m.id === mapped.id; });
+      if (idx >= 0) Object.assign(MAGAZZINO[idx], mapped);
+      else MAGAZZINO.push(mapped);
+      buildMagazzino(); updateDash();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'magazzino' }, function(payload) {
       if (!_realtimeReady) return;
       var row = payload.new; if (!row) return;
-      var item = MAGAZZINO.find(function(m){ return m.id === row.item_id; });
-      if (item) { item.attuale = row.attuale; buildMagazzino(); updateDash(); }
-      else { _reloadMagazzino(true); }
+      var mapped = {
+        id: row.item_id, nome: row.nome || '', attuale: row.attuale || 0,
+        minimo: row.minimo || 0, unita: row.unita || '',
+        categoria: row.categoria || 'altro', costoUnitario: row.costo_unitario || 0,
+      };
+      var idx = MAGAZZINO.findIndex(function(m){ return m.id === mapped.id; });
+      if (idx >= 0) Object.assign(MAGAZZINO[idx], mapped);
+      else MAGAZZINO.push(mapped);
+      buildMagazzino(); updateDash();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'magazzino' }, function(payload) {
       if (!_realtimeReady) return;
