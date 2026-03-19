@@ -1044,60 +1044,11 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load calendario]', e.message); }
 
-  // 4. SPESA
-  try {
-    var spRes = batch2[1];
-    if (spRes.data && spRes.data.length) {
-      SPESA = spRes.data.map(function(s) {
-        var obj = {
-          id: s.id, nome: s.item, done: s.done || false,
-          qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
-          unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
-          magazzinoId: s.magazzino_id || null,
-          qtyNum: 0, _categoria: null,
-        };
-        // Ricostruisci qtyNum da qty (es. "5 bottiglie" → 5)
-        if (obj.qty) {
-          var parsed = parseFloat(obj.qty);
-          if (!isNaN(parsed)) obj.qtyNum = parsed;
-        }
-        // Ricostruisci _categoria e unita da MAGAZZINO se è una voce automatica
-        if (obj.fromMagazzino && obj.magazzinoId) {
-          var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; });
-          if (mz) {
-            obj._categoria    = mz.categoria;
-            obj.costoUnitario = mz.costoUnitario;
-            obj.unita         = mz.unita;
-          }
-        }
-        return obj;
-      });
-      var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
-      if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
-      var _spMaxTs = spRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
-      if (_spMaxTs) _lastFetch['spesa'] = _spMaxTs;
-    }
-  } catch(e) { console.warn('[load spesa]', e.message); }
-
-  // 5. LAVORI
-  try {
-    var lavRes = batch2[2];
-    if (lavRes.data && lavRes.data.length) {
-      LAVORI = lavRes.data.map(function(l) {
-        return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
-      });
-      var maxId = LAVORI.reduce(function(m,l){ return Math.max(m,l.id); }, 0);
-      if (maxId >= _nextIds.lavori) _nextIds.lavori = maxId + 1;
-      var _lavMaxTs = lavRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
-      if (_lavMaxTs) _lastFetch['lavori'] = _lavMaxTs;
-    }
-  } catch(e) { console.warn('[load lavori]', e.message); }
-
-  // 6. MAGAZZINO — carica tutti i campi (metadati + quantità) da Supabase
+  // 4. MAGAZZINO — carica tutti i campi (metadati + quantità) da Supabase
+  // Processato PRIMA di SPESA così le voci fromMagazzino trovano i metadati corretti
   try {
     var mzRes = batch2[3];
     if (mzRes.data && mzRes.data.length) {
-      // Ricostruisce MAGAZZINO interamente da Supabase — nessun hardcoding
       MAGAZZINO = mzRes.data.map(function(row) {
         return {
           id:            row.item_id,
@@ -1115,7 +1066,57 @@ async function loadAllData() {
     }
   } catch(e) { console.warn('[load magazzino]', e.message); }
 
-  // 7. PAGAMENTI
+  // 5. SPESA
+  try {
+    var spRes = batch2[1];
+    if (spRes.data && spRes.data.length) {
+      SPESA = spRes.data.map(function(s) {
+        var obj = {
+          id: s.id, nome: s.item, done: s.done || false,
+          qty: s.qty || '', costoUnitario: s.costo_unitario || 0,
+          unita: s.unita || '', fromMagazzino: s.from_magazzino || false,
+          magazzinoId: s.magazzino_id || null,
+          qtyNum: 0, _categoria: null,
+        };
+        if (obj.qty) {
+          var parsed = parseFloat(obj.qty);
+          if (!isNaN(parsed)) obj.qtyNum = parsed;
+        }
+        // Ricostruisci _categoria e unita da MAGAZZINO (ora già caricato)
+        if (obj.fromMagazzino && obj.magazzinoId) {
+          var mz = MAGAZZINO.find(function(m){ return m.id === obj.magazzinoId; });
+          if (mz) {
+            obj._categoria    = mz.categoria;
+            obj.costoUnitario = mz.costoUnitario;
+            obj.unita         = mz.unita;
+          }
+        }
+        return obj;
+      });
+      var maxId = SPESA.reduce(function(m,s){ return Math.max(m,s.id); }, 0);
+      if (maxId >= _nextIds.spesa) _nextIds.spesa = maxId + 1;
+      var _spMaxTs = spRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_spMaxTs) _lastFetch['spesa'] = _spMaxTs;
+    }
+  } catch(e) { console.warn('[load spesa]', e.message); }
+
+  // 6. LAVORI
+  try {
+    var lavRes = batch2[2];
+    if (lavRes.data && lavRes.data.length) {
+      LAVORI = lavRes.data.map(function(l) {
+        return { id: l.id, lavoro: l.lavoro, who: l.who || '-', done: l.done || false };
+      });
+      var maxId = LAVORI.reduce(function(m,l){ return Math.max(m,l.id); }, 0);
+      if (maxId >= _nextIds.lavori) _nextIds.lavori = maxId + 1;
+      var _lavMaxTs = lavRes.data.reduce(function(mx,r){ return (!mx||r.updated_at>mx)?r.updated_at:mx; }, null);
+      if (_lavMaxTs) _lastFetch['lavori'] = _lavMaxTs;
+    }
+  } catch(e) { console.warn('[load lavori]', e.message); }
+
+  // 7. (MAGAZZINO già processato al passo 4)
+
+  // 8. PAGAMENTI
   try {
     var pagRes = batch2[4];
     if (pagRes.data && pagRes.data.length) {
