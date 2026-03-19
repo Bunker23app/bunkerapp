@@ -4890,7 +4890,8 @@ function stampaProgrammaEventi() {
 var _pendingInviteToken = (function() {
   var p = new URLSearchParams(window.location.search);
   var t = p.get('invite');
-  if (t) window.history.replaceState({}, document.title, window.location.pathname);
+  // NON rimuovere il token dall'URL qui: nelle PWA può creare problemi di timing.
+  // Il replaceState viene fatto solo dopo la validazione riuscita in checkInviteToken().
   return t || null;
 })();
 var _currentInviteToken = null;
@@ -5050,7 +5051,8 @@ async function checkInviteToken() {
     if (inv.usato) { showToast('// INVITO GIÀ UTILIZZATO', 'error'); return; }
     if (new Date(inv.scadenza) < new Date()) { showToast('// INVITO SCADUTO', 'error'); return; }
 
-    // Token valido — mostra schermata registrazione
+    // Token valido — rimuovi il token dall'URL (solo ora, dopo la validazione)
+    window.history.replaceState({}, document.title, window.location.pathname);
     _inviteTokenAttivo = inv;
     _pendingInviteToken = null;
     navigate('screenRegistrazione');
