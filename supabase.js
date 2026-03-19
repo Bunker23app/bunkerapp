@@ -609,7 +609,7 @@ function _applyConfig(cfg) {
 
 // ════════════════════════════════════════════════════════
 // CACHE LOCALSTORAGE — tutti i ruoli (guest, utente, premium, aiutante, staff, admin)
-// Chiave: bunker23_cache_v7 (aggiornare versione ad ogni cambio struttura dati)
+// Chiave: bunker23_cache_v8 (aggiornare versione ad ogni cambio struttura dati)
 // Campi cachati per ruolo:
 //   Tutti:        EVENTI, BACHECA, INFO, CONSIGLIATI, SUGGERIMENTI, VALUTAZIONI, MEMBERS ridotto
 //                 + WIDGET_CONFIG (ordine+enabled), TAB_CONFIG (enabled)
@@ -620,7 +620,7 @@ function _applyConfig(cfg) {
 // NON cachati: password, log raw, dati sensibili
 // ════════════════════════════════════════════════════════
 
-var _CACHE_KEY = 'bunker23_cache_v7';
+var _CACHE_KEY = 'bunker23_cache_v8';
 
 // Timestamp dell'ultimo fetch riuscito per ogni tabella (popolato da _restorePublicCache)
 var _lastFetch = {}; // { appconfig: ISOstring, calendario: ISOstring, members: ISOstring, ... }
