@@ -402,7 +402,52 @@ function openProfiloUtente() {
         }
       }
     }
+    // Sezione INSTALLA APP
+    var _installBody = document.getElementById('modalBody');
+    if (_installBody) {
+      var _installDiv = document.createElement('div');
+      _installDiv.style.cssText = 'margin-top:16px;border-top:1px solid var(--border);padding-top:14px';
+      _installDiv.innerHTML =
+        '<div style="font-family:var(--mono);font-size:9px;color:#555;letter-spacing:2px;margin-bottom:10px">// INSTALLA APP</div>' +
+        '<div id="uteInstallAppContent"></div>';
+      _installBody.appendChild(_installDiv);
+      (function renderUteInstallApp() {
+        var el = document.getElementById('uteInstallAppContent');
+        if (!el) return;
+        if (_isStandalone()) {
+          el.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">\u2713</span><span style="font-family:monospace;font-size:10px;color:#4caf50;letter-spacing:2px">APP GI\u00c0 INSTALLATA</span></div>';
+        } else if (_pwaInstallPrompt) {
+          el.innerHTML = '<button onclick="installAppFromModal()" class="btn-action btn-action-green" style="width:100%;letter-spacing:4px">\u2b07 INSTALLA APP</button>';
+        } else if (_isIOS()) {
+          el.innerHTML =
+            '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;margin-bottom:10px">// SEGUI QUESTI PASSAGGI SU IOS</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px">' +
+              '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">1.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca l'icona <strong style="color:#fff">Condividi</strong> in basso (quadrato con freccia su)</span></div>' +
+              '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">2.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca <strong style="color:#fff">Aggiungi alla schermata Home</strong></span></div>' +
+              '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">3.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca <strong style="color:#fff">Aggiungi</strong> in alto a destra</span></div>' +
+            '</div>';
+        } else {
+          el.innerHTML = '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px">// APRI IL MENU DEL BROWSER E SELEZIONA \"AGGIUNGI ALLA SCHERMATA HOME\"</div>';
+        }
+      })();
+    }
   }, 50);
+}
+
+async function installAppFromModal() {
+  if (!_pwaInstallPrompt) return;
+  _pwaInstallPrompt.prompt();
+  var result = await _pwaInstallPrompt.userChoice;
+  if (result.outcome === 'accepted') _pwaInstallPrompt = null;
+  var elModal = document.getElementById('uteInstallAppContent');
+  if (elModal) {
+    if (_isStandalone()) {
+      elModal.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">\u2713</span><span style="font-family:monospace;font-size:10px;color:#4caf50;letter-spacing:2px">APP GI\u00c0 INSTALLATA</span></div>';
+    } else {
+      elModal.innerHTML = '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px">// APRI IL MENU DEL BROWSER</div>';
+    }
+  }
+  renderInstallApp();
 }
 
 function selectUtenteColor(el, col) {
