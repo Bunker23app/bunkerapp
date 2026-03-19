@@ -4474,21 +4474,6 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   } catch(e) {}
 
-  // ── CONTROLLO TOKEN INVITO (PRIMA DI TUTTO) ──────────────────────────────
-  // Se c'è un pending invite token, processalo PRIMA del caricamento dati
-  if (_pendingInviteToken) {
-    try {
-      await checkInviteToken();
-      // Se arriviamo qui, l'utente è stato reindirizzato a screenRegistrazione
-      // Non proseguire con il caricamento normale
-      return;
-    } catch(e) {
-      console.warn('Errore controllo token invito:', e);
-      // Se il token non è valido, prosegui con il flusso normale
-      _pendingInviteToken = null;
-    }
-  }
-
   // Carica tutti i dati da Supabase in background.
   // FLUSSO:
   // 1. currentUser e _sessionToRestore già impostati in modo sincrono sopra
@@ -4499,6 +4484,21 @@ document.addEventListener('DOMContentLoaded', function() {
   (async function() {
     try {
       _sbReady = true;
+
+      // ── Step 1: CONTROLLO TOKEN INVITO (PRIMA DI TUTTO) ──────────────────────
+      // Se c'è un pending invite token, processalo PRIMA del caricamento dati
+      if (_pendingInviteToken) {
+        try {
+          await checkInviteToken();
+          // Se arriviamo qui, l'utente è stato reindirizzato a screenRegistrazione
+          // Non proseguire con il caricamento normale
+          return;
+        } catch(e) {
+          console.warn('Errore controllo token invito:', e);
+          // Se il token non è valido, prosegui con il flusso normale
+          _pendingInviteToken = null;
+        }
+      }
 
       // ── Step 2: carica dati con il ruolo già noto ─────────────────────────
       await loadAllData();
