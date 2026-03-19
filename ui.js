@@ -4485,21 +4485,6 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       _sbReady = true;
 
-      // ── Step 1: CONTROLLO TOKEN INVITO (PRIMA DI TUTTO) ──────────────────────
-      // Se c'è un pending invite token, processalo PRIMA del caricamento dati
-      if (_pendingInviteToken) {
-        try {
-          await checkInviteToken();
-          // Se arriviamo qui, l'utente è stato reindirizzato a screenRegistrazione
-          // Non proseguire con il caricamento normale
-          return;
-        } catch(e) {
-          console.warn('Errore controllo token invito:', e);
-          // Se il token non è valido, prosegui con il flusso normale
-          _pendingInviteToken = null;
-        }
-      }
-
       // ── Step 2: carica dati con il ruolo già noto ─────────────────────────
       await loadAllData();
 
@@ -4566,7 +4551,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (typeof onUserLogin === 'function') onUserLogin();
       if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
       if (typeof ripianificaTuttiReminder === 'function') ripianificaTuttiReminder();
-      // RIMOSSA: checkInviteToken() - ora viene chiamata prima del blocco async
+      if (typeof checkInviteToken === 'function') checkInviteToken();
       if (_pendingEventoId && currentUser) navigaAdEvento(_pendingEventoId);
 
       console.log('Supabase: tutti i dati caricati · ruolo: ' + (currentUser ? currentUser.role : 'guest'));
@@ -4905,8 +4890,7 @@ function stampaProgrammaEventi() {
 var _pendingInviteToken = (function() {
   var p = new URLSearchParams(window.location.search);
   var t = p.get('invite');
-  // NON rimuovere il token dall'URL qui: nelle PWA può creare problemi di timing.
-  // Il replaceState viene fatto solo dopo la validazione riuscita in checkInviteToken().
+  if (t) window.history.replaceState({}, document.title, window.location.pathname);
   return t || null;
 })();
 var _currentInviteToken = null;
@@ -5066,8 +5050,7 @@ async function checkInviteToken() {
     if (inv.usato) { showToast('// INVITO GIÀ UTILIZZATO', 'error'); return; }
     if (new Date(inv.scadenza) < new Date()) { showToast('// INVITO SCADUTO', 'error'); return; }
 
-    // Token valido — rimuovi il token dall'URL (solo ora, dopo la validazione)
-    window.history.replaceState({}, document.title, window.location.pathname);
+    // Token valido — mostra schermata registrazione
     _inviteTokenAttivo = inv;
     _pendingInviteToken = null;
     navigate('screenRegistrazione');
@@ -5153,6 +5136,10 @@ async function doRegistrazione() {
     updateHomeAccessLevel();
     if (typeof onUserLogin === 'function') onUserLogin();
     if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
+    
+    // Carica tutti i dati dopo la registrazione
+    await loadAllData();
+    
     navigate('screenHome');
     showToast('// BENVENUTO, ' + nome.toUpperCase() + ' ✓', 'success');
   } catch(e) {
