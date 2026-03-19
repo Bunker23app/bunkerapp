@@ -4269,7 +4269,7 @@ function importaDati(input) {
       INFO    = data.INFO    || INFO;
       SPESA   = data.SPESA   || SPESA;
       LAVORI  = data.LAVORI  || LAVORI;
-      MAGAZZINO = data.MAGAZZINO || MAGAZZINO;
+      // MAGAZZINO escluso dall'importazione — vive solo su Supabase
       // Valida formato PAGAMENTI (nuovo formato ha .saldo e .movimenti)
     if (data.PAGAMENTI && data.PAGAMENTI.length && 'saldo' in data.PAGAMENTI[0]) {
       PAGAMENTI = data.PAGAMENTI;
