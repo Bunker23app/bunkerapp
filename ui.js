@@ -422,7 +422,7 @@ function openProfiloUtente() {
           el.innerHTML =
             '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;margin-bottom:10px">// SEGUI QUESTI PASSAGGI SU IOS</div>' +
             '<div style="display:flex;flex-direction:column;gap:8px">' +
-              '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">1.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca l'icona <strong style="color:#fff">Condividi</strong> in basso (quadrato con freccia su)</span></div>' +
+              '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">1.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca l&#39;icona <strong style="color:#fff">Condividi</strong> in basso (quadrato con freccia su)</span></div>' +
               '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">2.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca <strong style="color:#fff">Aggiungi alla schermata Home</strong></span></div>' +
               '<div style="display:flex;align-items:flex-start;gap:8px"><span style="font-family:monospace;font-size:10px;color:#888;min-width:18px">3.</span><span style="font-family:monospace;font-size:9px;color:var(--light);line-height:1.5">Tocca <strong style="color:#fff">Aggiungi</strong> in alto a destra</span></div>' +
             '</div>';
