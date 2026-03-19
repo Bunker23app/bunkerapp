@@ -4405,9 +4405,8 @@ function buildAll() {
   buildSCal();
   buildBacheca();
   buildInfo();
-  buildMagazzino();   // prima del magazzino così syncMagazzinoWithSpesa ha i dati
-  syncMagazzinoWithSpesa(); // ricalcola lista spesa da magazzino aggiornato (prezzi, _categoria)
-  buildSpesa();       // ridisegna con dati già corretti
+  buildMagazzino();
+  buildSpesa();
   buildLavori();
   buildPagamenti();
   buildLog();
@@ -4547,12 +4546,16 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       // ── Step 5: sync spesa↔magazzino SOLO se magazzino è stato caricato da DB ──
-      // Se _magazzinoLoadedFromDb è false significa che il ruolo non aveva accesso
-      // al magazzino → MAGAZZINO è ancora hardcodato con attuale=0 → NON salvare
-      // su Supabase altrimenti si sovrascrivono i dati reali.
+      // Salva su Supabase solo se sync ha effettivamente modificato qualcosa,
+      // per evitare che saveSpesa() triggeri il realtime inutilmente.
       if (_magazzinoLoadedFromDb) {
+        var _spesaLenBefore = SPESA.length;
+        var _spesaSnap = JSON.stringify(SPESA.map(function(s){ return s.id + '|' + s.qtyNum + '|' + s.done; }));
         syncMagazzinoWithSpesa();
-        saveSpesa();
+        var _spesaSnapAfter = JSON.stringify(SPESA.map(function(s){ return s.id + '|' + s.qtyNum + '|' + s.done; }));
+        if (SPESA.length !== _spesaLenBefore || _spesaSnap !== _spesaSnapAfter) {
+          saveSpesa();
+        }
       }
 
       // ── Step 6: build UI e navigazione ───────────────────────────────────
