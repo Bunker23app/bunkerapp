@@ -40,6 +40,19 @@ const ROLES = {
 
 /* ── DOM helpers ── */
 function $id(id) { return document.getElementById(id); }
+
+// ── PWA INSTALL PROMPT ───────────────────────────────────────────────────────
+var _pwaInstallPrompt = null; // salva l'evento beforeinstallprompt
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  _pwaInstallPrompt = e;
+  // Aggiorna la sezione installa se è già visibile
+  if (typeof renderInstallApp === 'function') renderInstallApp();
+});
+window.addEventListener('appinstalled', function() {
+  _pwaInstallPrompt = null;
+  if (typeof renderInstallApp === 'function') renderInstallApp();
+});
 function nl2br(s) { return s ? s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>") : ""; }
 function $qs(sel, ctx) { return (ctx || document).querySelector(sel); }
 function setDisplay(id, val) { var el = $id(id); if (el) el.style.display = val; }
@@ -703,6 +716,7 @@ function showTab(name) {
     if (_ga && currentUser && (currentUser.role === ROLES.STAFF || currentUser.role === ROLES.ADMIN)) {
       _ga.style.display = 'block';
     }
+    renderInstallApp();
   }
   if (name === 'configura') buildConfigura();
   if (name === 'dashboard') { applyWidgetConfig(); applyTabConfig(); applyBenvenuto(); }
@@ -5136,10 +5150,6 @@ async function doRegistrazione() {
     updateHomeAccessLevel();
     if (typeof onUserLogin === 'function') onUserLogin();
     if (typeof requestPushPermissionAndRegister === 'function') requestPushPermissionAndRegister();
-    
-    // Carica tutti i dati dopo la registrazione
-    await loadAllData();
-    
     navigate('screenHome');
     showToast('// BENVENUTO, ' + nome.toUpperCase() + ' ✓', 'success');
   } catch(e) {
@@ -5303,4 +5313,85 @@ function _historyRow(label, value) {
     '<span style="font-family:var(--mono);font-size:8px;letter-spacing:2px;color:#555;min-width:90px;flex-shrink:0">' + label + '</span>' +
     '<span style="font-family:monospace;font-size:10px;color:var(--white)">' + value + '</span>' +
     '</div>';
+}
+
+// ── PWA: SEZIONE INSTALLA APP (tab-profilo) ──────────────────────────────────
+
+function _isIOS() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function _isStandalone() {
+  return window.navigator.standalone === true ||
+         window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function renderInstallApp() {
+  var el = $id('installAppContent');
+  if (!el) return;
+
+  // Già in modalità standalone (installata su qualsiasi device)
+  if (_isStandalone()) {
+    el.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding:10px 0">' +
+        '<span style="font-size:22px">✓</span>' +
+        '<span style="font-family:monospace;font-size:11px;color:#4caf50;letter-spacing:2px">APP GIÀ INSTALLATA</span>' +
+      '</div>';
+    return;
+  }
+
+  // Android con prompt disponibile
+  if (_pwaInstallPrompt) {
+    el.innerHTML =
+      '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;margin-bottom:12px">' +
+        '// AGGIUNGI L\'APP ALLA SCHERMATA HOME PER UN\'ESPERIENZA MIGLIORE' +
+      '</div>' +
+      '<button onclick="installApp()" class="btn-action btn-action-green" style="width:100%;letter-spacing:4px">⬇ INSTALLA APP</button>';
+    return;
+  }
+
+  // iOS — istruzioni manuali (visibili finché non si apre in standalone)
+  if (_isIOS()) {
+    el.innerHTML =
+      '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;margin-bottom:12px">' +
+        '// SEGUI QUESTI PASSAGGI PER INSTALLARE L\'APP SU IOS' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="font-family:monospace;font-size:11px;color:#888;min-width:20px">1.</span>' +
+          '<span style="font-family:monospace;font-size:10px;color:var(--light);line-height:1.5">' +
+            'Tocca l\'icona <strong style="color:#fff">Condividi</strong> in basso (il quadrato con la freccia su)' +
+          '</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="font-family:monospace;font-size:11px;color:#888;min-width:20px">2.</span>' +
+          '<span style="font-family:monospace;font-size:10px;color:var(--light);line-height:1.5">' +
+            'Scorri in basso e tocca <strong style="color:#fff">Aggiungi alla schermata Home</strong>' +
+          '</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="font-family:monospace;font-size:11px;color:#888;min-width:20px">3.</span>' +
+          '<span style="font-family:monospace;font-size:10px;color:var(--light);line-height:1.5">' +
+            'Tocca <strong style="color:#fff">Aggiungi</strong> in alto a destra' +
+          '</span>' +
+        '</div>' +
+      '</div>';
+    return;
+  }
+
+  // Fallback (Android senza prompt, desktop, ecc.)
+  el.innerHTML =
+    '<div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px">' +
+      '// PER INSTALLARE: APRI IL MENU DEL BROWSER E SELEZIONA "AGGIUNGI ALLA SCHERMATA HOME"' +
+    '</div>';
+}
+
+async function installApp() {
+  if (!_pwaInstallPrompt) return;
+  _pwaInstallPrompt.prompt();
+  var result = await _pwaInstallPrompt.userChoice;
+  if (result.outcome === 'accepted') {
+    _pwaInstallPrompt = null;
+  }
+  renderInstallApp();
 }
