@@ -2822,8 +2822,19 @@ function openBachecaModal(i) {
     _fotoWidgetHtml(item.foto);
 
   window._fotoCancellata = false;
-  window._modalCb = function() {
-    var fotoFinal = window._fotoCancellata ? null : (_getFotoFinal() || (window._fotoCancellata ? null : item.foto));
+  window._modalCb = async function() {
+    var fi = document.getElementById('bFotoFile');
+    var fotoFinal = item.foto || null;
+    if (fi && fi._b64) {
+      // Nuova foto caricata — upload su Storage
+      showToast('// CARICAMENTO FOTO...', 'info');
+      if (item.foto) deleteFotoBacheca(item.foto);
+      var uploadedUrl = await uploadFotoBacheca(fi._b64, item.id);
+      fotoFinal = uploadedUrl || fi._b64;
+    } else if (window._fotoCancellata) {
+      if (item.foto) deleteFotoBacheca(item.foto);
+      fotoFinal = null;
+    }
     var now = new Date();
     BACHECA[i] = {
       id: item.id,
@@ -2925,19 +2936,38 @@ function openBachecaModalNew() {
     _fotoWidgetHtml(null);
 
   window._fotoCancellata = false;
-  window._modalCb = function() {
+  window._modalCb = async function() {
     var titolo = document.getElementById('bTitolo').value.trim();
     if (!titolo) { showToast('// TITOLO OBBLIGATORIO', 'error'); return; }
-    var fotoFinal = _getFotoFinal();
-    var now = new Date();
-    BACHECA.unshift({
-      id: getNextId('bacheca'),
-      icon: document.getElementById('bIcon').value || '📢',
-      titolo: titolo,
-      testo: document.getElementById('bTesto').value.trim(),
-      tempo: 'OGGI ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0'),
-      foto: fotoFinal,
-    });
+    var fi = document.getElementById('bFotoFile');
+    var fotoFinal = null;
+    if (fi && fi._b64) {
+      showToast('// CARICAMENTO FOTO...', 'info');
+      var newId = getNextId('bacheca');
+      var uploadedUrl = await uploadFotoBacheca(fi._b64, newId);
+      fotoFinal = uploadedUrl || fi._b64;
+      var now = new Date();
+      BACHECA.unshift({
+        id: newId,
+        icon: document.getElementById('bIcon').value || '📢',
+        titolo: titolo,
+        testo: document.getElementById('bTesto').value.trim(),
+        tempo: formatLogTempo(new Date()),
+        foto: fotoFinal,
+      });
+    } else {
+      var urlEl = document.getElementById('bFotoUrl');
+      fotoFinal = (urlEl && urlEl.value.trim()) ? urlEl.value.trim() : null;
+      var now = new Date();
+      BACHECA.unshift({
+        id: getNextId('bacheca'),
+        icon: document.getElementById('bIcon').value || '📢',
+        titolo: titolo,
+        testo: document.getElementById('bTesto').value.trim(),
+        tempo: formatLogTempo(new Date()),
+        foto: fotoFinal,
+      });
+    }
     saveConfig();
     addLog('aggiunta bacheca: ' + titolo);
     buildBacheca();
@@ -2950,7 +2980,9 @@ function openBachecaModalNew() {
 function deleteBacheca(i) {
   if (!canEdit()) return;
   var label = BACHECA[i].titolo || 'voce';
+  var fotoUrl = BACHECA[i].foto;
   showConfirm('Eliminare "' + label + '"?', function() {
+    if (fotoUrl) deleteFotoBacheca(fotoUrl);
     addLog('eliminata bacheca: ' + label);
     BACHECA.splice(i, 1);
     saveConfig();
@@ -2965,17 +2997,38 @@ function openInfoModalNew() {
   $id('modalBody').innerHTML =
     '<div class="modal-row"><div style="flex:0 0 60px"><label class="modal-label">// ICONA</label><input class="modal-input" id="iIcon" style="font-size:18px" value="📄"/></div>' +
     '<div><label class="modal-label">// TITOLO</label><input class="modal-input" id="iTitolo" placeholder="Titolo sezione"/></div></div>' +
-    '<div><label class="modal-label">// TESTO</label><textarea class="modal-input" id="iTesto" rows="5" style="resize:none" placeholder="Contenuto della sezione..."></textarea></div>';
+    '<div><label class="modal-label">// TESTO</label><textarea class="modal-input" id="iTesto" rows="5" style="resize:none" placeholder="Contenuto della sezione..."></textarea></div>' +
+    _fotoWidgetHtml(null);
 
-  window._modalCb = function() {
+  window._fotoCancellata = false;
+  window._modalCb = async function() {
     var titolo = document.getElementById('iTitolo').value.trim();
     if (!titolo) { showToast('// TITOLO OBBLIGATORIO', 'error'); return; }
-    INFO.push({
-      id: getNextId('info'),
-      icon: document.getElementById('iIcon').value || '📄',
-      titolo: titolo,
-      testo: document.getElementById('iTesto').value.trim(),
-    });
+    var fi = document.getElementById('bFotoFile');
+    var fotoFinal = null;
+    if (fi && fi._b64) {
+      showToast('// CARICAMENTO FOTO...', 'info');
+      var newId = getNextId('info');
+      var uploadedUrl = await uploadFotoBacheca(fi._b64, 'info_' + newId);
+      fotoFinal = uploadedUrl || fi._b64;
+      INFO.push({
+        id: newId,
+        icon: document.getElementById('iIcon').value || '📄',
+        titolo: titolo,
+        testo: document.getElementById('iTesto').value.trim(),
+        foto: fotoFinal,
+      });
+    } else {
+      var urlEl = document.getElementById('bFotoUrl');
+      fotoFinal = (urlEl && urlEl.value.trim()) ? urlEl.value.trim() : null;
+      INFO.push({
+        id: getNextId('info'),
+        icon: document.getElementById('iIcon').value || '📄',
+        titolo: titolo,
+        testo: document.getElementById('iTesto').value.trim(),
+        foto: fotoFinal,
+      });
+    }
     saveConfig();
     addLog('aggiunta info: ' + titolo);
     buildInfo();
@@ -2988,7 +3041,9 @@ function openInfoModalNew() {
 function deleteInfo(i) {
   if (!canEdit()) return;
   var label = INFO[i].titolo || 'sezione';
+  var fotoUrl = INFO[i].foto;
   showConfirm('Eliminare "' + label + '"?', function() {
+    if (fotoUrl) deleteFotoBacheca(fotoUrl);
     addLog('eliminata info: ' + label);
     INFO.splice(i, 1);
     saveConfig();
@@ -3011,8 +3066,18 @@ function openInfoModal(i) {
     _fotoWidgetHtml(item.foto || null);
 
   window._fotoCancellata = false;
-  window._modalCb = function() {
-    var fotoFinal = window._fotoCancellata ? null : (_getFotoFinal() || item.foto || null);
+  window._modalCb = async function() {
+    var fi = document.getElementById('bFotoFile');
+    var fotoFinal = item.foto || null;
+    if (fi && fi._b64) {
+      showToast('// CARICAMENTO FOTO...', 'info');
+      if (item.foto) deleteFotoBacheca(item.foto);
+      var uploadedUrl = await uploadFotoBacheca(fi._b64, 'info_' + item.id);
+      fotoFinal = uploadedUrl || fi._b64;
+    } else if (window._fotoCancellata) {
+      if (item.foto) deleteFotoBacheca(item.foto);
+      fotoFinal = null;
+    }
     INFO[i] = {
       id: item.id,
       icon: document.getElementById('iIcon').value || item.icon,

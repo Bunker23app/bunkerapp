@@ -475,6 +475,41 @@ async function deleteLocandina(url) {
   } catch(e) { console.warn('[storage.locandine delete]', e.message); }
 }
 
+// Upload foto bacheca/info su Storage (bucket locandine, prefisso bacheca_)
+async function uploadFotoBacheca(b64, itemId) {
+  if (!_sbReady) return null;
+  try {
+    var parts = b64.split(',');
+    var mime  = parts[0].match(/:(.*?);/)[1];
+    var ext   = mime.split('/')[1] || 'jpg';
+    var byteStr = atob(parts[1]);
+    var arr = new Uint8Array(byteStr.length);
+    for (var i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+    var blob = new Blob([arr], { type: mime });
+    var fileName = 'bacheca_' + itemId + '_' + Date.now() + '.' + ext;
+    var res = await getSupabase().storage.from('locandine').upload(fileName, blob, {
+      contentType: mime, upsert: true,
+    });
+    if (res.error) { console.warn('[storage.bacheca upload]', res.error.message); return null; }
+    var urlRes = getSupabase().storage.from('locandine').getPublicUrl(fileName);
+    return urlRes.data.publicUrl || null;
+  } catch(e) { console.warn('[storage.bacheca upload]', e.message); return null; }
+}
+
+async function deleteFotoBacheca(url) {
+  if (!_sbReady || !url) return;
+  try {
+    var marker = '/object/public/locandine/';
+    var idx = url.indexOf(marker);
+    if (idx === -1) return;
+    var fileName = url.slice(idx + marker.length);
+    // Elimina solo file bacheca_ (non toccare le locandine eventi)
+    if (!fileName.startsWith('bacheca_')) return;
+    var res = await getSupabase().storage.from('locandine').remove([fileName]);
+    if (res.error) console.warn('[storage.bacheca delete]', res.error.message);
+  } catch(e) { console.warn('[storage.bacheca delete]', e.message); }
+}
+
 // SVUOTA LOG
 async function clearLogRemote() {
   if (!_sbReady) return;
