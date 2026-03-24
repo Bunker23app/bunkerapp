@@ -2770,7 +2770,10 @@ function openEventoModal(editIdx, preDay, preMese, preAnno) {
 // FOTO WIDGET HELPER (bacheca / info)
 // ════════════════════════════════════════
 function _fotoWidgetHtml(currentFoto) {
-  return '<div><label class="modal-label">// FOTO (URL)</label><input class="modal-input" id="bFotoUrl" placeholder="https://..." value="' + (currentFoto || '') + '"/></div>' +
+  // Se la foto esistente è un base64, non metterla nel campo URL — verrà migrata su Storage al prossimo salvataggio
+  var isBase64 = currentFoto && currentFoto.startsWith('data:');
+  var urlValue = (!currentFoto || isBase64) ? '' : currentFoto;
+  return '<div><label class="modal-label">// FOTO (URL)</label><input class="modal-input" id="bFotoUrl" placeholder="https://..." value="' + urlValue + '"/></div>' +
     '<div><label class="modal-label">// OPPURE CARICA</label>' +
     '<input type="file" id="bFotoFile" accept="image/*" style="display:none" onchange="previewFoto(this)"/>' +
     '<button onclick="document.getElementById(\'bFotoFile\').click()" style="width:100%;padding:10px;background:transparent;border:1px dashed #2a2a2a;color:#555;font-family:monospace;font-size:9px;letter-spacing:2px;cursor:pointer;border-radius:2px">📷 CARICA FOTO</button>' +
@@ -2834,6 +2837,14 @@ function openBachecaModal(i) {
     } else if (window._fotoCancellata) {
       if (item.foto) deleteFotoBacheca(item.foto);
       fotoFinal = null;
+    } else if (item.foto && item.foto.startsWith('data:')) {
+      // Migra base64 esistente su Storage
+      showToast('// MIGRAZIONE FOTO...', 'info');
+      var uploadedUrl = await uploadFotoBacheca(item.foto, item.id);
+      if (uploadedUrl) fotoFinal = uploadedUrl;
+    } else {
+      var urlEl = document.getElementById('bFotoUrl');
+      if (urlEl && urlEl.value.trim()) fotoFinal = urlEl.value.trim();
     }
     var now = new Date();
     BACHECA[i] = {
@@ -3077,6 +3088,14 @@ function openInfoModal(i) {
     } else if (window._fotoCancellata) {
       if (item.foto) deleteFotoBacheca(item.foto);
       fotoFinal = null;
+    } else if (item.foto && item.foto.startsWith('data:')) {
+      // Migra base64 esistente su Storage
+      showToast('// MIGRAZIONE FOTO...', 'info');
+      var uploadedUrl = await uploadFotoBacheca(item.foto, 'info_' + item.id);
+      if (uploadedUrl) fotoFinal = uploadedUrl;
+    } else {
+      var urlEl = document.getElementById('bFotoUrl');
+      if (urlEl && urlEl.value.trim()) fotoFinal = urlEl.value.trim();
     }
     INFO[i] = {
       id: item.id,
