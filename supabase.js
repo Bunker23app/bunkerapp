@@ -1136,9 +1136,8 @@ async function loadAllData() {
     if (logRes.data && logRes.data.length) {
       LOG = logRes.data.map(function(l) {
         var d = new Date(l.ts);
-        var tempo = 'OGGI · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
         var member = MEMBERS.find(function(m){ return m.name === l.author; }) || { name: l.author, initial: l.author.charAt(0), color: '#444', role: 'utente' };
-        return { member: member, azione: l.action, tempo: tempo, _id: l.id };
+        return { member: member, azione: l.action, tempo: formatLogTempo(d), _id: l.id, _ts: l.ts };
       });
     }
   } catch(e) { console.warn('[load log]', e.message); }
@@ -1249,9 +1248,8 @@ function initRealtime() {
       if (!l) return;
       if (LOG.some(function(e){ return e._id === l.id; })) return;
       var d = new Date(l.ts);
-      var tempo = 'OGGI · ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
       var member = MEMBERS.find(function(m){ return m.name === l.author; }) || { name: l.author, initial: l.author.charAt(0), color: '#444', role: 'utente' };
-      LOG.unshift({ member: member, azione: l.action, tempo: tempo, _id: l.id });
+      LOG.unshift({ member: member, azione: l.action, tempo: formatLogTempo(d), _id: l.id, _ts: l.ts });
       _unreadLog++;
       buildLog();
       updateDash();

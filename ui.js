@@ -157,14 +157,23 @@ function tag(tipo) {
   return '<span class="tag ' + TIPO_TAG_CLASS[tipo] + '">' + TIPO_LABEL[tipo] + '</span>';
 }
 
-function nowStr() {
-  const n = new Date();
-  return 'OGGI · ' + String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
+function formatLogTempo(ts) {
+  // ts: ISO string o Date
+  var d = ts instanceof Date ? ts : new Date(ts);
+  var now = new Date();
+  var oggi = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var ieri = new Date(oggi.getTime() - 86400000);
+  var dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var ore = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  if (dDay.getTime() === oggi.getTime()) return 'OGGI · ' + ore;
+  if (dDay.getTime() === ieri.getTime()) return 'IERI · ' + ore;
+  return d.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'2-digit'}) + ' · ' + ore;
 }
 
 function addLog(azione) {
   if (!currentUser) return;
-  LOG.unshift({ member: currentUser, azione: azione, tempo: nowStr() });
+  var _ts = new Date().toISOString();
+  LOG.unshift({ member: currentUser, azione: azione, tempo: formatLogTempo(_ts), _ts: _ts });
   _unreadLog++;
   buildLog();
   updateDash();
